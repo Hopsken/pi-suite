@@ -7,6 +7,10 @@ settings:
 importers:
 
   .:
+    dependencies:
+      proper-lockfile:
+        specifier: 4.1.2
+        version: 4.1.2
     devDependencies:
       '@biomejs/biome':
         specifier: 2.3.5
@@ -17,9 +21,15 @@ importers:
       '@earendil-works/pi-coding-agent':
         specifier: 0.81.1
         version: 0.81.1(ws@8.21.1)(zod@4.4.3)
+      '@earendil-works/pi-tui':
+        specifier: 0.81.1
+        version: 0.81.1
       '@types/node':
         specifier: 22.19.19
         version: 22.19.19
+      '@types/proper-lockfile':
+        specifier: 4.1.4
+        version: 4.1.4
       shx:
         specifier: 0.4.0
         version: 0.4.0
@@ -528,6 +538,9 @@ packages:
 
   '@types/node@22.19.19':
     resolution: {integrity: sha512-dyh/xO2Fh5bYrfWaaqGrRQQGkNdmYw6AmaAUvYeUMNTWQtvb796ikLdmTchRmOlOiIJ1TDXfWgVx1QkUlQ6Hew==}
+
+  '@types/proper-lockfile@4.1.4':
+    resolution: {integrity: sha512-uo2ABllncSqg9F1D4nugVl9v93RmjxF6LJzQLMLDdPaXCUIDPeOJ21Gbqi43xNKzBi/WQ0Q0dICqufzQbMjipQ==}
 
   '@types/retry@0.12.0':
     resolution: {integrity: sha512-wWKOClTTiizcZhXnPY4wikVAwmdYHp8q6DmC+EJUzAMsycb7HB32Kh9RN4+0gExjmPmZSAQjgURXIGATPegAvA==}
@@ -1851,6 +1864,10 @@ snapshots:
   '@types/node@22.19.19':
     dependencies:
       undici-types: 6.21.0
+
+  '@types/proper-lockfile@4.1.4':
+    dependencies:
+      '@types/retry': 0.12.0
 
   '@types/retry@0.12.0': {}
 

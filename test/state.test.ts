@@ -1,30 +1,46 @@
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { SettingsManager } from "@earendil-works/pi-coding-agent";
 import { describe, expect, test } from "vitest";
 import {
-	COMPACTION_MODEL_ENTRY,
 	includePreviousFileOperations,
-	restoreCompactionModelSelection,
+	loadCompactionModelSelection,
+	saveCompactionModelSelection,
 } from "../src/state.ts";
 
-describe("restoreCompactionModelSelection", () => {
-	test("restores the latest branch selection and respects a reset", () => {
+describe("compaction model settings", () => {
+	test("stores the selection without replacing unrelated or subsequently updated Pi settings", async () => {
+		const directory = mkdtempSync(join(tmpdir(), "pi-suite-settings-"));
+		const settingsPath = join(directory, "settings.json");
 		const selected = {
 			provider: "openai",
 			modelId: "gpt-test",
 			thinkingLevel: "high",
-		};
-		const entries = [
-			{ type: "custom", customType: COMPACTION_MODEL_ENTRY, data: { version: 1, selection: selected } },
-		] as Parameters<typeof restoreCompactionModelSelection>[0];
+		} as const;
+		writeFileSync(settingsPath, JSON.stringify({ theme: "dark", piSuite: { anotherPreference: true } }), "utf8");
 
-		expect(restoreCompactionModelSelection(entries)).toEqual(selected);
+		try {
+			saveCompactionModelSelection(selected, settingsPath);
 
-		entries.push({
-			type: "custom",
-			customType: COMPACTION_MODEL_ENTRY,
-			data: { version: 1, selection: null },
-		} as (typeof entries)[number]);
+			expect(loadCompactionModelSelection(settingsPath)).toEqual(selected);
+			expect(JSON.parse(readFileSync(settingsPath, "utf8"))).toEqual({
+				theme: "dark",
+				piSuite: { anotherPreference: true, compactionModel: selected },
+			});
 
-		expect(restoreCompactionModelSelection(entries)).toBeUndefined();
+			const settingsManager = SettingsManager.create(directory, directory);
+			settingsManager.setTheme("light");
+			await settingsManager.flush();
+			expect(loadCompactionModelSelection(settingsPath)).toEqual(selected);
+			expect(JSON.parse(readFileSync(settingsPath, "utf8")).theme).toBe("light");
+
+			saveCompactionModelSelection(undefined, settingsPath);
+			expect(loadCompactionModelSelection(settingsPath)).toBeUndefined();
+			expect(JSON.parse(readFileSync(settingsPath, "utf8")).piSuite.compactionModel).toBeNull();
+		} finally {
+			rmSync(directory, { recursive: true, force: true });
+		}
 	});
 });
 

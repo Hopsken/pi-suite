@@ -20,17 +20,37 @@ included only when they materially improve the coding-agent experience.
 The package adds `/compaction-model`, which selects a dedicated model and thinking level for session compaction without
 changing the active conversation model.
 
-The selection is stored as branch-aware session metadata, so it survives session resumes and follows the selected branch
-when navigating the session tree. Choose **Use active session model (default)** to reset it.
+The selection is stored in Pi's global `settings.json` under `piSuite.compactionModel`, so it persists across new and
+resumed sessions. Choose **Use active session model (default)** to reset it.
 
 Compaction continues to use Pi's native implementation, including its prompts, structured summaries, cut-point and recent
 message retention, split-turn handling, iterative summaries, file-operation tracking, and `/compact` instructions. If the
 selected model disappears, cannot authenticate, or fails, Pi falls back to the active session model.
 
-Only authenticated models are shown. The thinking-level picker is limited to levels supported by the selected model.
+Only authenticated models are shown. The searchable picker matches provider names, model IDs, and human-readable model
+names. The thinking-level picker is limited to levels supported by the selected model.
 
 > Pi currently authenticates the active conversation model before running compaction hooks. The active model therefore
 > still needs valid authentication even when a dedicated compaction model is selected.
+
+### Pi reports "Nothing to compact"
+
+Pi checks whether any persisted conversation entries fall outside `compaction.keepRecentTokens` before it invokes extension
+hooks. The footer's context count also includes context that is not represented by those entries, such as the system prompt
+and tool definitions. As a result, `/compact` can report `Nothing to compact (session too small)` even after the displayed
+context crosses the compaction threshold; the selected compaction model is not called in this case.
+
+Lower Pi's retained-history budget when this occurs, then run `/reload` before retrying `/compact`:
+
+```json
+{
+  "compaction": {
+    "keepRecentTokens": 8000
+  }
+}
+```
+
+The appropriate value depends on the session and desired retained history. Pi's default is `20000`.
 
 ### Curated Pi packages
 

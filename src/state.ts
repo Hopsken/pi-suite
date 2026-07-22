@@ -1,8 +1,11 @@
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { dirname, join } from "node:path";
 import type { ModelThinkingLevel } from "@earendil-works/pi-ai";
-import type { SessionBeforeCompactEvent } from "@earendil-works/pi-coding-agent";
+import { getAgentDir, type SessionBeforeCompactEvent } from "@earendil-works/pi-coding-agent";
+import lockfile from "proper-lockfile";
 
-/** Session entry used to persist Pi Suite's branch-local compaction model selection. */
-export const COMPACTION_MODEL_ENTRY = "pi-suite.compaction-model";
+/** Namespace used for Pi Suite preferences in Pi's global settings.json. */
+export const PI_SUITE_SETTINGS_KEY = "piSuite";
 
 const THINKING_LEVELS = ["off", "minimal", "low", "medium", "high", "xhigh", "max"] as const;
 
@@ -10,11 +13,6 @@ export interface CompactionModelSelection {
 	provider: string;
 	modelId: string;
 	thinkingLevel: ModelThinkingLevel;
-}
-
-export interface CompactionModelState {
-	version: 1;
-	selection: CompactionModelSelection | null;
 }
 
 type CompactionPreparation = SessionBeforeCompactEvent["preparation"];
@@ -38,21 +36,77 @@ function isSelection(value: unknown): value is CompactionModelSelection {
 	);
 }
 
-export function restoreCompactionModelSelection(entries: SessionEntry[]): CompactionModelSelection | undefined {
-	let selection: CompactionModelSelection | undefined;
+function parseSettings(content: string, settingsPath: string): UnknownRecord {
+	const settings: unknown = JSON.parse(content);
+	if (!isRecord(settings)) throw new Error(`Pi settings at ${settingsPath} must contain a JSON object.`);
+	return settings;
+}
 
-	for (const entry of entries) {
-		if (entry.type !== "custom" || entry.customType !== COMPACTION_MODEL_ENTRY || !isRecord(entry.data)) continue;
-		if (entry.data.version !== 1) continue;
+function getSettingsPath(): string {
+	return join(getAgentDir(), "settings.json");
+}
 
-		if (entry.data.selection === null) {
-			selection = undefined;
-		} else if (isSelection(entry.data.selection)) {
-			selection = entry.data.selection;
+function acquireSettingsLock(settingsPath: string): () => void {
+	let lastError: unknown;
+	for (let attempt = 0; attempt < 10; attempt++) {
+		try {
+			return lockfile.lockSync(settingsPath, { realpath: false });
+		} catch (error) {
+			const code = isRecord(error) && typeof error.code === "string" ? error.code : undefined;
+			if (code !== "ELOCKED" || attempt === 9) throw error;
+			lastError = error;
+			const waitUntil = Date.now() + 20;
+			while (Date.now() < waitUntil) {
+				// Pi's settings writes are synchronous and short; briefly wait for its shared lock.
+			}
 		}
 	}
+	throw lastError;
+}
 
-	return selection;
+export function loadCompactionModelSelection(settingsPath = getSettingsPath()): CompactionModelSelection | undefined {
+	if (!existsSync(settingsPath)) return undefined;
+
+	const release = acquireSettingsLock(settingsPath);
+	try {
+		const settings = parseSettings(readFileSync(settingsPath, "utf8"), settingsPath);
+		const suiteSettings = settings[PI_SUITE_SETTINGS_KEY];
+		if (suiteSettings === undefined) return undefined;
+		if (!isRecord(suiteSettings)) throw new Error(`${PI_SUITE_SETTINGS_KEY} in ${settingsPath} must be an object.`);
+
+		const selection = suiteSettings.compactionModel;
+		if (selection === undefined || selection === null) return undefined;
+		if (!isSelection(selection)) {
+			throw new Error(`${PI_SUITE_SETTINGS_KEY}.compactionModel in ${settingsPath} is invalid.`);
+		}
+		return selection;
+	} finally {
+		release();
+	}
+}
+
+export function saveCompactionModelSelection(
+	selection: CompactionModelSelection | undefined,
+	settingsPath = getSettingsPath(),
+): void {
+	mkdirSync(dirname(settingsPath), { recursive: true });
+
+	const release = acquireSettingsLock(settingsPath);
+	try {
+		const settings = existsSync(settingsPath) ? parseSettings(readFileSync(settingsPath, "utf8"), settingsPath) : {};
+		const existingSuiteSettings = settings[PI_SUITE_SETTINGS_KEY];
+		if (existingSuiteSettings !== undefined && !isRecord(existingSuiteSettings)) {
+			throw new Error(`${PI_SUITE_SETTINGS_KEY} in ${settingsPath} must be an object.`);
+		}
+
+		settings[PI_SUITE_SETTINGS_KEY] = {
+			...(existingSuiteSettings ?? {}),
+			compactionModel: selection ?? null,
+		};
+		writeFileSync(settingsPath, JSON.stringify(settings, null, 2), "utf8");
+	} finally {
+		release();
+	}
 }
 
 export function includePreviousFileOperations(
