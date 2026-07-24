@@ -4,6 +4,7 @@
 	"description": "An opinionated Pi coding agent distribution for an AmpCode-level developer experience.",
 	"type": "module",
 	"files": [
+		"docs",
 		"src",
 		"README.md",
 		"LICENSE"

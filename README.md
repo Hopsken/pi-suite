@@ -102,8 +102,10 @@ pnpm build
 
 Custom workflows live under `src/` and are registered through the single `src/index.ts` extension entry point so they can
 share state, configuration, UI conventions, and lifecycle behavior. Third-party Pi packages must be added to both
-`dependencies` and `bundledDependencies`, then their selected resources must be listed explicitly in the root `pi`
-manifest. Pi does not automatically discover resources from transitive dependencies.
+`dependencies` and `bundleDependencies`, then their selected resources must be listed explicitly in the root `pi`
+manifest. Pi does not automatically discover resources from transitive dependencies. See
+[Bundling third-party Pi extensions](docs/bundling-pi-extensions.md) for the complete maintainer workflow and release
+checks.
 
 ## License
 

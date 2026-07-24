@@ -5,7 +5,7 @@ import { describe, expect, test } from "vitest";
 
 type PackageManifest = {
 	pi: { extensions: string[] };
-	bundledDependencies: string[];
+	bundleDependencies: string[];
 	dependencies: Record<string, string>;
 };
 
@@ -21,7 +21,7 @@ describe("package distribution", () => {
 		];
 
 		expect(manifest.pi.extensions).toEqual(extensions);
-		expect(manifest.bundledDependencies).toEqual(["@juicesharp/rpiv-btw", "@juicesharp/rpiv-ask-user-question"]);
+		expect(manifest.bundleDependencies).toEqual(["@juicesharp/rpiv-btw", "@juicesharp/rpiv-ask-user-question"]);
 		expect(manifest.dependencies["@juicesharp/rpiv-btw"]).toBe("2.0.0");
 		expect(manifest.dependencies["@juicesharp/rpiv-ask-user-question"]).toBe("2.0.0");
 
