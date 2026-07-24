@@ -22,22 +22,26 @@
 		"extensions": [
 			"./src/index.ts",
 			"./node_modules/@juicesharp/rpiv-btw/index.ts",
-			"./node_modules/@juicesharp/rpiv-ask-user-question/index.ts"
+			"./node_modules/@juicesharp/rpiv-ask-user-question/index.ts",
+			"./node_modules/pi-web-access/index.ts"
 		]
 	},
 	"peerDependencies": {
 		"@earendil-works/pi-ai": "*",
 		"@earendil-works/pi-coding-agent": "*",
-		"@earendil-works/pi-tui": "*"
+		"@earendil-works/pi-tui": "*",
+		"typebox": "*"
 	},
 	"dependencies": {
 		"@juicesharp/rpiv-ask-user-question": "2.0.0",
 		"@juicesharp/rpiv-btw": "2.0.0",
+		"pi-web-access": "0.13.0",
 		"proper-lockfile": "4.1.2"
 	},
 	"bundleDependencies": [
 		"@juicesharp/rpiv-btw",
-		"@juicesharp/rpiv-ask-user-question"
+		"@juicesharp/rpiv-ask-user-question",
+		"pi-web-access"
 	],
 	"devDependencies": {
 		"@biomejs/biome": "2.3.5",

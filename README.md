@@ -60,9 +60,13 @@ The appropriate value depends on the session and desired retained history. Pi's 
   [`@juicesharp/rpiv-ask-user-question`](https://github.com/juicesharp/rpiv-mono/tree/main/packages/rpiv-ask-user-question)
   adds the `ask_user_question` tool, which gives the model a structured interactive questionnaire. English is available
   without the optional rpiv i18n package.
+- **Web Access** — [`pi-web-access`](https://github.com/nicobailon/pi-web-access) adds `web_search`, `fetch_content`, and
+  `get_search_content` tools for web research, URL and PDF extraction, GitHub repositories, and video content. It works
+  without an API key using Exa MCP, with optional support for additional search providers.
 
-Both packages are pinned and bundled into `pi-suite`, so `pi install npm:pi-suite` loads them together with the compaction
-feature.
+All three packages are pinned and bundled into `pi-suite`, so `pi install npm:pi-suite` loads them together with the
+compaction feature. The suite exposes only the Web Access extension; it does not register `pi-web-access`'s optional
+Librarian skill.
 
 ## Install
 
@@ -85,10 +89,12 @@ To install the curated packages piece by piece instead, use:
 ```sh
 pi install npm:@juicesharp/rpiv-btw
 pi install npm:@juicesharp/rpiv-ask-user-question
+pi install npm:pi-web-access
 ```
 
-Do not install either child package separately while `pi-suite` is active. Pi treats the aggregate and child as different
-package identities and may load duplicate command or tool registrations from separate module roots.
+Installing `pi-web-access` directly also loads its Librarian skill from the child package manifest. Do not install any child
+package separately while `pi-suite` is active. Pi treats the aggregate and child as different package identities and may
+load duplicate command or tool registrations from separate module roots.
 
 ## Development
 

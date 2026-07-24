@@ -4,9 +4,10 @@ import { fileURLToPath } from "node:url";
 import { describe, expect, test } from "vitest";
 
 type PackageManifest = {
-	pi: { extensions: string[] };
+	pi: { extensions: string[]; skills?: string[] };
 	bundleDependencies: string[];
 	dependencies: Record<string, string>;
+	peerDependencies: Record<string, string>;
 };
 
 const repositoryRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
@@ -18,12 +19,20 @@ describe("package distribution", () => {
 			"./src/index.ts",
 			"./node_modules/@juicesharp/rpiv-btw/index.ts",
 			"./node_modules/@juicesharp/rpiv-ask-user-question/index.ts",
+			"./node_modules/pi-web-access/index.ts",
 		];
 
 		expect(manifest.pi.extensions).toEqual(extensions);
-		expect(manifest.bundleDependencies).toEqual(["@juicesharp/rpiv-btw", "@juicesharp/rpiv-ask-user-question"]);
+		expect(manifest.pi.skills).toBeUndefined();
+		expect(manifest.bundleDependencies).toEqual([
+			"@juicesharp/rpiv-btw",
+			"@juicesharp/rpiv-ask-user-question",
+			"pi-web-access",
+		]);
 		expect(manifest.dependencies["@juicesharp/rpiv-btw"]).toBe("2.0.0");
 		expect(manifest.dependencies["@juicesharp/rpiv-ask-user-question"]).toBe("2.0.0");
+		expect(manifest.dependencies["pi-web-access"]).toBe("0.13.0");
+		expect(manifest.peerDependencies.typebox).toBe("*");
 
 		for (const extension of extensions) {
 			expect(existsSync(resolve(repositoryRoot, extension))).toBe(true);
