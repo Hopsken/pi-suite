@@ -1,11 +1,12 @@
 # Adding a subagent type
 
-Pi Suite bundles [`@tintinweb/pi-subagents`](https://github.com/tintinweb/pi-subagents) and ships two custom types:
+Pi Suite bundles [`@tintinweb/pi-subagents`](https://github.com/tintinweb/pi-subagents) and ships three custom types:
 `Explore`, whose isolated read-only context provides finder-style codebase discovery without filling the parent agent's
-context with intermediate searches, and `Oracle`, which provides an independent expert second opinion through GPT-5.6 Sol
-with high thinking. Oracle selectively loads Pi Suite, Subagents, and Web Access so it can delegate focused repository
-discovery through `oracle_research` and retrieve external evidence without inheriting unrelated extension tools. Use this
-guide when adding another type in a later change.
+context with intermediate searches; `Librarian`, which uses Web Access for authoritative source-code research outside the
+local workspace; and `Oracle`, which provides an independent expert second opinion through GPT-5.6 Sol with high thinking.
+Oracle selectively loads Pi Suite, Subagents, and Web Access so it can delegate focused repository discovery through
+`oracle_research` and retrieve external evidence without inheriting unrelated extension tools. Use this guide when adding
+another type in a later change.
 
 ## Define the agent
 
@@ -58,6 +59,35 @@ restrict `bash`; omit `bash` if shell access is unnecessary.
 Definitions with the same filename override lower-priority definitions. This can replace an upstream type. To disable all
 three upstream types while retaining custom definitions, set `disableDefaultAgents: true` in `.pi/subagents.json` or the
 global `$PI_CODING_AGENT_DIR/subagents.json`.
+
+## Separate local discovery from external research
+
+Explore owns first-party codebase discovery. Librarian owns deep understanding of authoritative repositories outside the
+local workspace, including upstream dependencies whose vendored or `node_modules` copy is incomplete. Keep those roles
+separate in their descriptions and prompts so the parent selects the source of truth rather than treating both as generic
+search agents.
+
+Librarian loads only Web Access and explicitly exposes its three research tools alongside read-oriented built-ins:
+
+```yaml
+tools: "read, bash, grep, find, ls, ext:pi-web-access/web_search, ext:pi-web-access/fetch_content, ext:pi-web-access/get_search_content"
+extensions: [pi-web-access]
+skills: true
+```
+
+`fetch_content` turns a known GitHub URL into a managed clone under `/tmp/pi-github-repos/<owner>/<repo>` or an API-backed
+view for an oversized repository. Librarian follows a clone-first workflow and searches that local copy with `rg`, read,
+and Git history commands instead of repeatedly fetching individual pages. This tool-managed retrieval state is compatible
+with Librarian's logical read-only role, but Bash remains prompt-enforced rather than sandboxed. The prompt forbids shell
+cloning, network commands, and workspace inspection as an authoritative source. It also requires `web_search` calls to set
+`workflow: "none"`; the default summary-review workflow opens an interactive curator, which is inappropriate inside an
+autonomous child session.
+
+Librarian keeps `skills: true` so user-installed repository-research skills can contribute authenticated read-only sources,
+for example through a configured Sourcegraph CLI. The curated prompt remains the source of Librarian's role and safety
+boundary; inherited skills provide workflows, not a replacement identity. Pi Suite still does not register
+`pi-web-access`'s bundled Librarian skill. Unlike Oracle, Librarian needs no recursive delegation or Pi Suite adapter, so do
+not load `pi-suite` or `pi-subagents` into its child session.
 
 ## Scope recursive delegation to one subagent
 

@@ -89,6 +89,15 @@ describe("Pi Suite extension", () => {
 		expect(explorePreset).toContain("model: openai-codex/gpt-5.6-terra");
 		expect(explorePreset).toContain("thinking: low");
 		expect(explorePreset).toContain("workspace-relative file paths and line numbers or ranges");
+		const librarianPath = join(agentDirectory, "agents", "Librarian.md");
+		const librarianPreset = readFileSync(librarianPath, "utf8");
+		expect(librarianPreset).toContain("read-only codebase-understanding specialist");
+		expect(librarianPreset).toContain("model: openai-codex/gpt-5.6-sol");
+		expect(librarianPreset).toContain("thinking: off");
+		expect(librarianPreset).toContain("extensions: [pi-web-access]");
+		expect(librarianPreset).toContain("skills: true");
+		expect(librarianPreset).toContain("/tmp/pi-github-repos/<owner>/<repo>");
+		expect(librarianPreset).toContain("immutable GitHub permalinks");
 		const oraclePath = join(agentDirectory, "agents", "Oracle.md");
 		const oraclePreset = readFileSync(oraclePath, "utf8");
 		expect(oraclePreset).toContain("independent expert engineering adviser");
@@ -102,21 +111,24 @@ describe("Pi Suite extension", () => {
 			disableDefaultAgents: true,
 		});
 		expect(notify).toHaveBeenCalledWith(
-			"Installed 2 presets. Upstream default agents are disabled globally. Run /reload to use the presets.",
+			"Installed 3 presets. Upstream default agents are disabled globally. Run /reload to use the presets.",
 			"info",
 		);
 
 		const customizedExplore = "---\ndescription: Custom Explore\n---\nKeep this definition.\n";
+		const customizedLibrarian = "---\ndescription: Custom Librarian\n---\nKeep this definition.\n";
 		const customizedOracle = "---\ndescription: Custom Oracle\n---\nKeep this definition.\n";
 		writeFileSync(explorePath, customizedExplore, "utf8");
+		writeFileSync(librarianPath, customizedLibrarian, "utf8");
 		writeFileSync(oraclePath, customizedOracle, "utf8");
 		notify.mockClear();
 		await commands.get("setup-agents")?.handler("", { ui: { notify } });
 
 		expect(readFileSync(explorePath, "utf8")).toBe(customizedExplore);
+		expect(readFileSync(librarianPath, "utf8")).toBe(customizedLibrarian);
 		expect(readFileSync(oraclePath, "utf8")).toBe(customizedOracle);
 		expect(notify).toHaveBeenCalledWith(
-			"All presets were already installed. Left 2 existing definitions unchanged. Upstream default agents are disabled globally. Run /reload to use the presets.",
+			"All presets were already installed. Left 3 existing definitions unchanged. Upstream default agents are disabled globally. Run /reload to use the presets.",
 			"info",
 		);
 	});

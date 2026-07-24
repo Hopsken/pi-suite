@@ -69,14 +69,20 @@ The appropriate value depends on the session and desired retained history. Pi's 
 
 All four packages are pinned and bundled into `pi-suite`, so `pi install npm:pi-suite` loads them together with the
 compaction feature. The suite exposes only the Web Access extension; it does not register `pi-web-access`'s optional
-Librarian skill.
+Librarian skill. Pi Suite's Librarian below is an independently curated subagent preset instead.
 
-Run `/setup-agents` once to install Pi Suite's read-only `Explore` and `Oracle` subagents globally:
+Run `/setup-agents` once to install Pi Suite's read-only `Explore`, `Librarian`, and `Oracle` subagents globally:
 
 - **Explore** provides finder-style behavior and concept discovery, chained searches, call-path tracing, and cross-module
   correlation in an isolated context. It returns concise findings with file and line evidence. Pi should use its direct
   read, grep, and find tools instead for known paths, symbols, and exact strings, and can launch multiple `Explore` agents
   in parallel for independent discovery questions. It is pinned to GPT-5.6 Terra with low thinking.
+- **Librarian** provides Amp-style external source-code research for repositories outside the local workspace. Use it to
+  understand upstream dependencies, locate feature implementations, compare patterns across projects, trace code history,
+  or inspect public and `gh`-authenticated private GitHub repositories. It uses Web Access to locate and fetch authoritative
+  sources, clones repositories into `/tmp/pi-github-repos/<owner>/<repo>`, then uses read-only local and Git inspection for
+  fast, complete lookups. It returns a full evidence-backed answer with immutable source links and is pinned to GPT-5.6 Sol
+  with thinking off.
 - **Oracle** provides an independent expert second opinion for tricky reviews, subtle bugs, architecture or design
   tradeoffs, and complex implementation plans. Brief it with one focused question, the intent, relevant files or git refs,
   constraints, risks or alternatives to assess, and the desired output. It advises only; the parent agent remains
@@ -85,13 +91,17 @@ Run `/setup-agents` once to install Pi Suite's read-only `Explore` and `Oracle` 
   Sol with high thinking.
 
 The command writes to `$PI_CODING_AGENT_DIR/agents` (normally `~/.pi/agent/agents`), preserves existing customized
-definitions, and disables the upstream default agents in favor of suite and user definitions. Run `/reload` afterward. Both
-presets disable skills. Explore exposes only read-oriented built-ins. Oracle uses Subagents' `disallowed_tools` denylist to
-structurally remove `edit` and `write`, and selectively exposes Pi Suite's `oracle_research` adapter plus Web Access's
-`web_search`, `fetch_content`, and `get_search_content`; it does not inherit other extension tools. Pi Suite registers
-`oracle_research` only inside the Oracle child session, so the adapter is absent from the main Pi agent's tool schema.
-Because both presets retain Bash for repository inspection, their non-mutating shell policy is prompt-enforced rather than
-sandboxed. See [Adding a subagent type](docs/adding-subagent-types.md) when extending the suite's preset catalog.
+definitions, and disables the upstream default agents in favor of suite and user definitions. Run `/reload` afterward.
+Explore and Oracle disable skills; Librarian inherits available skills so authenticated repository-research workflows such
+as Sourcegraph can complement Web Access. Explore exposes only read-oriented built-ins. Librarian loads only the Web Access
+extension and selectively exposes `web_search`, `fetch_content`, and `get_search_content` alongside read-oriented built-ins;
+its prompt requires non-interactive search and limits other Bash use to external clone inspection or read-only workflows
+defined by loaded skills. Oracle uses Subagents'
+`disallowed_tools` denylist to structurally remove `edit` and `write`, and selectively exposes Pi Suite's `oracle_research`
+adapter plus the same Web Access tools; it does not inherit other extension tools. Pi Suite registers `oracle_research` only
+inside the Oracle child session, so the adapter is absent from the main Pi agent's tool schema. Because all three presets
+retain Bash for repository inspection, their non-mutating shell policy is prompt-enforced rather than sandboxed. See
+[Adding a subagent type](docs/adding-subagent-types.md) when extending the suite's preset catalog.
 
 ## Install
 
@@ -107,8 +117,8 @@ Or install directly from a Git repository:
 pi install git:github.com/Hopsken/pi-suite
 ```
 
-Restart Pi after installation or run `/reload`, run `/setup-agents` once, then run `/reload` again to use `Explore` and
-`Oracle`. Use `/agents` to manage subagents and `/compaction-model` to configure compaction.
+Restart Pi after installation or run `/reload`, run `/setup-agents` once, then run `/reload` again to use `Explore`,
+`Librarian`, and `Oracle`. Use `/agents` to manage subagents and `/compaction-model` to configure compaction.
 
 To install the curated packages piece by piece instead, use:
 
