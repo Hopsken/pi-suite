@@ -1,5 +1,6 @@
 import { clampThinkingLevel, getSupportedThinkingLevels } from "@earendil-works/pi-ai";
 import { compact, type ExtensionAPI, type ExtensionContext } from "@earendil-works/pi-coding-agent";
+import { installAgentPresets } from "./agent-presets.ts";
 import { type CompactionModelChoice, CompactionModelSelector } from "./model-selector.ts";
 import {
 	type CompactionModelSelection,
@@ -118,6 +119,30 @@ export default function piSuite(pi: ExtensionAPI): void {
 			}
 			selection = nextSelection;
 			ctx.ui.notify(`Compaction will use ${model.provider}/${model.id} with ${thinkingLevel} thinking.`, "info");
+		},
+	});
+
+	pi.registerCommand("setup-agents", {
+		description: "Install Pi Suite's preset subagents globally",
+		handler: async (_args, ctx) => {
+			try {
+				const result = installAgentPresets();
+				const installed =
+					result.installed.length > 0
+						? `Installed ${result.installed.length} preset${result.installed.length === 1 ? "" : "s"}.`
+						: "All presets were already installed.";
+				const skipped =
+					result.skipped.length > 0
+						? ` Left ${result.skipped.length} existing ${result.skipped.length === 1 ? "definition" : "definitions"} unchanged.`
+						: "";
+				ctx.ui.notify(
+					`${installed}${skipped} Upstream default agents are disabled globally. Run /reload to use the presets.`,
+					"info",
+				);
+			} catch (error) {
+				const reason = error instanceof Error ? error.message : String(error);
+				ctx.ui.notify(`Could not install Pi Suite agent presets: ${reason}`, "error");
+			}
 		},
 	});
 

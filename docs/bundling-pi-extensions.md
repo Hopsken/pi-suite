@@ -148,6 +148,7 @@ The root manifest currently applies this pattern to:
 
 - `@juicesharp/rpiv-btw`
 - `@juicesharp/rpiv-ask-user-question`
+- `@tintinweb/pi-subagents`
 - `pi-web-access` (extension entry point only; its Librarian skill is not exposed)
 
 Use those entries as the executable reference when adding the next extension.

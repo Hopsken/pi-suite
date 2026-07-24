@@ -60,13 +60,21 @@ The appropriate value depends on the session and desired retained history. Pi's 
   [`@juicesharp/rpiv-ask-user-question`](https://github.com/juicesharp/rpiv-mono/tree/main/packages/rpiv-ask-user-question)
   adds the `ask_user_question` tool, which gives the model a structured interactive questionnaire. English is available
   without the optional rpiv i18n package.
+- **Subagents** — [`@tintinweb/pi-subagents`](https://github.com/tintinweb/pi-subagents) adds the `Agent`,
+  `get_subagent_result`, and `steer_subagent` tools for foreground and background delegation, plus `/agents` for managing
+  agent definitions, running agents, concurrency, scheduling, and other settings.
 - **Web Access** — [`pi-web-access`](https://github.com/nicobailon/pi-web-access) adds `web_search`, `fetch_content`, and
   `get_search_content` tools for web research, URL and PDF extraction, GitHub repositories, and video content. It works
   without an API key using Exa MCP, with optional support for additional search providers.
 
-All three packages are pinned and bundled into `pi-suite`, so `pi install npm:pi-suite` loads them together with the
+All four packages are pinned and bundled into `pi-suite`, so `pi install npm:pi-suite` loads them together with the
 compaction feature. The suite exposes only the Web Access extension; it does not register `pi-web-access`'s optional
 Librarian skill.
+
+Run `/setup-agents` once to install Pi Suite's read-only `Explore` subagent globally. The command writes to
+`$PI_CODING_AGENT_DIR/agents` (normally `~/.pi/agent/agents`), preserves an existing customized `Explore.md`, and disables
+the upstream default agents in favor of suite and user definitions. Run `/reload` afterward. See
+[Adding a subagent type](docs/adding-subagent-types.md) when extending the suite's preset catalog.
 
 ## Install
 
@@ -82,13 +90,15 @@ Or install directly from a Git repository:
 pi install git:github.com/Hopsken/pi-suite
 ```
 
-Restart Pi after installation or run `/reload`, then use `/compaction-model`.
+Restart Pi after installation or run `/reload`, run `/setup-agents` once, then run `/reload` again to use `Explore`. Use
+`/agents` to manage subagents and `/compaction-model` to configure compaction.
 
 To install the curated packages piece by piece instead, use:
 
 ```sh
 pi install npm:@juicesharp/rpiv-btw
 pi install npm:@juicesharp/rpiv-ask-user-question
+pi install npm:@tintinweb/pi-subagents
 pi install npm:pi-web-access
 ```
 

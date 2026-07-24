@@ -24,7 +24,7 @@ function createExtensionApi() {
 	return { commands, handlers };
 }
 
-describe("compaction model extension", () => {
+describe("Pi Suite extension", () => {
 	let agentDirectory: string;
 	let originalAgentDirectory: string | undefined;
 	let fauxProvider: FauxProviderRegistration | undefined;
@@ -41,6 +41,36 @@ describe("compaction model extension", () => {
 		if (originalAgentDirectory === undefined) delete process.env.PI_CODING_AGENT_DIR;
 		else process.env.PI_CODING_AGENT_DIR = originalAgentDirectory;
 		rmSync(agentDirectory, { recursive: true, force: true });
+	});
+
+	test("installs Explore globally, preserves customization, and disables upstream defaults", async () => {
+		writeFileSync(join(agentDirectory, "subagents.json"), JSON.stringify({ maxConcurrent: 8 }), "utf8");
+		const { commands } = createExtensionApi();
+		const notify = vi.fn();
+
+		await commands.get("setup-agents")?.handler("", { ui: { notify } });
+
+		const explorePath = join(agentDirectory, "agents", "Explore.md");
+		expect(readFileSync(explorePath, "utf8")).toContain("read-only codebase exploration specialist");
+		expect(JSON.parse(readFileSync(join(agentDirectory, "subagents.json"), "utf8"))).toEqual({
+			maxConcurrent: 8,
+			disableDefaultAgents: true,
+		});
+		expect(notify).toHaveBeenCalledWith(
+			"Installed 1 preset. Upstream default agents are disabled globally. Run /reload to use the presets.",
+			"info",
+		);
+
+		const customizedExplore = "---\ndescription: Custom Explore\n---\nKeep this definition.\n";
+		writeFileSync(explorePath, customizedExplore, "utf8");
+		notify.mockClear();
+		await commands.get("setup-agents")?.handler("", { ui: { notify } });
+
+		expect(readFileSync(explorePath, "utf8")).toBe(customizedExplore);
+		expect(notify).toHaveBeenCalledWith(
+			"All presets were already installed. Left 1 existing definition unchanged. Upstream default agents are disabled globally. Run /reload to use the presets.",
+			"info",
+		);
 	});
 
 	test("persists a selected model across sessions and uses it for real native compaction", async () => {
