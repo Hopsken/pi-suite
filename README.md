@@ -71,10 +71,15 @@ All four packages are pinned and bundled into `pi-suite`, so `pi install npm:pi-
 compaction feature. The suite exposes only the Web Access extension; it does not register `pi-web-access`'s optional
 Librarian skill.
 
-Run `/setup-agents` once to install Pi Suite's read-only `Explore` subagent globally. The command writes to
-`$PI_CODING_AGENT_DIR/agents` (normally `~/.pi/agent/agents`), preserves an existing customized `Explore.md`, and disables
-the upstream default agents in favor of suite and user definitions. Run `/reload` afterward. See
-[Adding a subagent type](docs/adding-subagent-types.md) when extending the suite's preset catalog.
+Run `/setup-agents` once to install Pi Suite's finder-style, read-only `Explore` subagent globally. `Explore` handles
+behavior- and concept-based discovery, chained searches, call-path tracing, and correlations across multiple code areas in
+an isolated context, then returns concise findings with file and line evidence to the parent agent. Pi should use its direct
+read, grep, and find tools instead for known paths, symbols, and exact strings, and can launch multiple `Explore` agents in
+parallel for independent discovery questions.
+
+The command writes to `$PI_CODING_AGENT_DIR/agents` (normally `~/.pi/agent/agents`), preserves an existing customized
+`Explore.md`, and disables the upstream default agents in favor of suite and user definitions. Run `/reload` afterward.
+See [Adding a subagent type](docs/adding-subagent-types.md) when extending the suite's preset catalog.
 
 ## Install
 

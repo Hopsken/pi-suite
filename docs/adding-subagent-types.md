@@ -1,7 +1,8 @@
 # Adding a subagent type
 
 Pi Suite bundles [`@tintinweb/pi-subagents`](https://github.com/tintinweb/pi-subagents) and currently ships one custom type,
-`Explore`. Use this guide when adding another type in a later change.
+`Explore`, whose isolated read-only context provides finder-style codebase discovery without filling the parent agent's
+context with intermediate searches. Use this guide when adding another type in a later change.
 
 ## Define the agent
 

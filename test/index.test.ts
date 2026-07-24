@@ -51,7 +51,11 @@ describe("Pi Suite extension", () => {
 		await commands.get("setup-agents")?.handler("", { ui: { notify } });
 
 		const explorePath = join(agentDirectory, "agents", "Explore.md");
-		expect(readFileSync(explorePath, "utf8")).toContain("read-only codebase exploration specialist");
+		const explorePreset = readFileSync(explorePath, "utf8");
+		expect(explorePreset).toContain("read-only codebase discovery specialist");
+		expect(explorePreset).toContain("model: openai-codex/gpt-5.6-terra");
+		expect(explorePreset).toContain("thinking: low");
+		expect(explorePreset).toContain("workspace-relative file paths and line numbers or ranges");
 		expect(JSON.parse(readFileSync(join(agentDirectory, "subagents.json"), "utf8"))).toEqual({
 			maxConcurrent: 8,
 			disableDefaultAgents: true,

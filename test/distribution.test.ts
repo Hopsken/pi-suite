@@ -51,6 +51,13 @@ describe("package distribution", () => {
 		expect(existsSync(resolve(repositoryRoot, "node_modules/@tintinweb/pi-subagents/src/default-agents.ts"))).toBe(
 			true,
 		);
-		expect(existsSync(resolve(repositoryRoot, "presets/agents/Explore.md"))).toBe(true);
+		const explorePreset = readFileSync(resolve(repositoryRoot, "presets/agents/Explore.md"), "utf8");
+		expect(explorePreset).toContain("Intelligently search your codebase");
+		expect(explorePreset).toContain("tools: read, bash, grep, find, ls");
+		expect(explorePreset).toContain("extensions: false");
+		expect(explorePreset).toContain("skills: false");
+		expect(explorePreset).toContain("model: openai-codex/gpt-5.6-terra");
+		expect(explorePreset).toContain("thinking: low");
+		expect(explorePreset).toContain("return only the distilled evidence");
 	});
 });
