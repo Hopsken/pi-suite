@@ -87,8 +87,8 @@ Run `/setup-agents` once to install Pi Suite's read-only `Explore`, `Librarian`,
   tradeoffs, and complex implementation plans. Brief it with one focused question, the intent, relevant files or git refs,
   constraints, risks or alternatives to assess, and the desired output. It advises only; the parent agent remains
   responsible for applying and verifying recommendations. It can retrieve current external evidence with the bundled Web
-  Access tools and delegate focused multi-step repository discovery to the read-only `Explore` type. It is pinned to GPT-5.6
-  Sol with high thinking.
+  Access tools, delegate focused local repository discovery to the read-only `Explore` type, and delegate authoritative
+  external source-code research to `Librarian`. It is pinned to GPT-5.6 Sol with high thinking.
 
 The command writes to `$PI_CODING_AGENT_DIR/agents` (normally `~/.pi/agent/agents`), preserves existing customized
 definitions, and disables the upstream default agents in favor of suite and user definitions. Run `/reload` afterward.
@@ -96,11 +96,12 @@ Explore and Oracle disable skills; Librarian inherits available skills so authen
 as Sourcegraph can complement Web Access. Explore exposes only read-oriented built-ins. Librarian loads only the Web Access
 extension and selectively exposes `web_search`, `fetch_content`, and `get_search_content` alongside read-oriented built-ins;
 its prompt requires non-interactive search and limits other Bash use to external clone inspection or read-only workflows
-defined by loaded skills. Oracle uses Subagents'
-`disallowed_tools` denylist to structurally remove `edit` and `write`, and selectively exposes Pi Suite's `oracle_research`
-adapter plus the same Web Access tools; it does not inherit other extension tools. Pi Suite registers `oracle_research` only
-inside the Oracle child session, so the adapter is absent from the main Pi agent's tool schema. Because all three presets
-retain Bash for repository inspection, their non-mutating shell policy is prompt-enforced rather than sandboxed. See
+defined by loaded skills. Oracle uses Subagents' `disallowed_tools` denylist to structurally remove `edit` and `write`, and
+selectively exposes Pi Suite's `oracle_finder` and `oracle_librarian` adapters plus the same Web Access tools; it
+does not inherit other extension tools. Pi Suite registers both adapters only inside the Oracle child session, so they are
+absent from the main Pi agent's tool schema. Each adapter hard-codes its one allowed child type rather than exposing generic
+recursive delegation. Because all three presets retain Bash for repository inspection, their non-mutating shell policy is
+prompt-enforced rather than sandboxed. See
 [Adding a subagent type](docs/adding-subagent-types.md) when extending the suite's preset catalog.
 
 ## Install

@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { fauxAssistantMessage } from "@earendil-works/pi-ai";
 import { type FauxProviderRegistration, registerFauxProvider } from "@earendil-works/pi-ai/compat";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
-import piSuite, { ORACLE_RESEARCH_TOOL_NAME } from "../src/index.ts";
+import piSuite, { ORACLE_FINDER_TOOL_NAME, ORACLE_LIBRARIAN_TOOL_NAME } from "../src/index.ts";
 
 type Handler = (event: any, context: any) => any;
 type ToolHandler = (...args: any[]) => any;
@@ -133,9 +133,10 @@ describe("Pi Suite extension", () => {
 		);
 	});
 
-	test("registers oracle_research only inside the Oracle subagent session", async () => {
+	test("registers Oracle research tools only inside the Oracle subagent session", async () => {
 		const mainSession = createExtensionApi();
-		expect(mainSession.tools.has(ORACLE_RESEARCH_TOOL_NAME)).toBe(false);
+		expect(mainSession.tools.has(ORACLE_FINDER_TOOL_NAME)).toBe(false);
+		expect(mainSession.tools.has(ORACLE_LIBRARIAN_TOOL_NAME)).toBe(false);
 
 		await mainSession.handlers.get("session_start")?.(
 			{ reason: "startup" },
@@ -146,10 +147,12 @@ describe("Pi Suite extension", () => {
 				ui: { notify: vi.fn() },
 			},
 		);
-		expect(mainSession.tools.has(ORACLE_RESEARCH_TOOL_NAME)).toBe(false);
+		expect(mainSession.tools.has(ORACLE_FINDER_TOOL_NAME)).toBe(false);
+		expect(mainSession.tools.has(ORACLE_LIBRARIAN_TOOL_NAME)).toBe(false);
 
 		const oracleSession = await createOracleExtensionApi();
-		expect(oracleSession.tools.has(ORACLE_RESEARCH_TOOL_NAME)).toBe(true);
+		expect(oracleSession.tools.has(ORACLE_FINDER_TOOL_NAME)).toBe(true);
+		expect(oracleSession.tools.has(ORACLE_LIBRARIAN_TOOL_NAME)).toBe(true);
 	});
 
 	test("delegates Oracle research to a foreground Explore subagent and returns its result", async () => {
@@ -172,7 +175,7 @@ describe("Pi Suite extension", () => {
 			});
 		});
 
-		const result = await tools.get(ORACLE_RESEARCH_TOOL_NAME)?.execute(
+		const result = await tools.get(ORACLE_FINDER_TOOL_NAME)?.execute(
 			"tool-call-1",
 			{
 				prompt: "Find the request-routing source of truth and return file-and-line evidence.",
@@ -204,6 +207,58 @@ describe("Pi Suite extension", () => {
 		});
 	});
 
+	test("delegates Oracle external research to a foreground Librarian subagent and returns its result", async () => {
+		const { events, tools } = await createOracleExtensionApi();
+		let spawnRequest: any;
+		events.on("subagents:rpc:spawn", (value) => {
+			spawnRequest = value;
+			queueMicrotask(() => {
+				events.emit(`subagents:rpc:spawn:reply:${spawnRequest.requestId}`, {
+					success: true,
+					data: { id: "librarian-1" },
+				});
+				events.emit("subagents:completed", {
+					id: "librarian-1",
+					status: "completed",
+					result: "Upstream implements the flow in owner/repo at commit abc123.",
+					toolUses: 7,
+					durationMs: 350,
+				});
+			});
+		});
+
+		const result = await tools.get(ORACLE_LIBRARIAN_TOOL_NAME)?.execute(
+			"tool-call-librarian-1",
+			{
+				prompt: "Inspect owner/repo at v2.0 and explain the request flow with immutable source links.",
+				description: "Research upstream flow",
+			},
+			undefined,
+			undefined,
+			{},
+		);
+
+		expect(spawnRequest).toMatchObject({
+			type: "Librarian",
+			prompt: "Inspect owner/repo at v2.0 and explain the request flow with immutable source links.",
+			options: {
+				description: "Research upstream flow",
+				isBackground: false,
+				inheritContext: false,
+			},
+		});
+		expect(result).toEqual({
+			content: [{ type: "text", text: "Upstream implements the flow in owner/repo at commit abc123." }],
+			details: {
+				id: "librarian-1",
+				status: "completed",
+				toolUses: 7,
+				durationMs: 350,
+				tokens: undefined,
+			},
+		});
+	});
+
 	test("stops an in-flight Oracle research subagent when the tool call is cancelled", async () => {
 		const { events, tools } = await createOracleExtensionApi();
 		let stopRequest: any;
@@ -220,7 +275,7 @@ describe("Pi Suite extension", () => {
 		});
 		const controller = new AbortController();
 		const result = tools
-			.get(ORACLE_RESEARCH_TOOL_NAME)
+			.get(ORACLE_FINDER_TOOL_NAME)
 			?.execute(
 				"tool-call-2",
 				{ prompt: "Trace the flow.", description: "Trace flow" },
@@ -253,7 +308,7 @@ describe("Pi Suite extension", () => {
 		});
 
 		const result = tools
-			.get(ORACLE_RESEARCH_TOOL_NAME)
+			.get(ORACLE_FINDER_TOOL_NAME)
 			?.execute("tool-call-3", { prompt: "Trace the flow.", description: "Trace flow" }, undefined, undefined, {});
 
 		await expect(result).rejects.toThrow("model request failed");

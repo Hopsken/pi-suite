@@ -82,7 +82,8 @@ describe("package distribution", () => {
 
 		const oraclePreset = readFileSync(resolve(repositoryRoot, "presets/agents/Oracle.md"), "utf8");
 		expect(oraclePreset).toContain("Consult a read-only expert for a second opinion");
-		expect(oraclePreset).toContain("ext:pi-suite/oracle_research");
+		expect(oraclePreset).toContain("ext:pi-suite/oracle_finder");
+		expect(oraclePreset).toContain("ext:pi-suite/oracle_librarian");
 		expect(oraclePreset).toContain("ext:pi-web-access/web_search");
 		expect(oraclePreset).toContain("ext:pi-web-access/fetch_content");
 		expect(oraclePreset).toContain("ext:pi-web-access/get_search_content");
@@ -95,7 +96,7 @@ describe("package distribution", () => {
 		expect(oraclePreset).toContain("run_in_background: false");
 		expect(oraclePreset).toContain("independent expert engineering adviser");
 		expect(oraclePreset).toContain("parent agent remains responsible");
-		expect(oraclePreset).toContain("You remain responsible for interpreting its findings");
+		expect(oraclePreset).toContain("You remain responsible for interpreting every subagent's findings");
 	});
 
 	test("Oracle frontmatter resolves to a read-only built-in set and only its intended extension tools", async () => {
@@ -133,7 +134,7 @@ describe("package distribution", () => {
 
 			const selectors = parseExtSelectors(oracle?.extSelectors ?? []);
 			expect([...selectors.extNames]).toEqual(["pi-suite", "pi-web-access"]);
-			expect([...(selectors.narrowing.get("pi-suite") ?? [])]).toEqual(["oracle_research"]);
+			expect([...(selectors.narrowing.get("pi-suite") ?? [])]).toEqual(["oracle_finder", "oracle_librarian"]);
 			expect([...(selectors.narrowing.get("pi-web-access") ?? [])]).toEqual([
 				"web_search",
 				"fetch_content",
@@ -148,7 +149,8 @@ describe("package distribution", () => {
 				"grep",
 				"find",
 				"ls",
-				"oracle_research",
+				"oracle_finder",
+				"oracle_librarian",
 				"Agent",
 				"get_subagent_result",
 				"steer_subagent",
@@ -173,7 +175,7 @@ describe("package distribution", () => {
 			const loader = {
 				getExtensions: () => ({
 					extensions: [
-						extension(resolve(repositoryRoot, "src/index.ts"), ["oracle_research"]),
+						extension(resolve(repositoryRoot, "src/index.ts"), ["oracle_finder", "oracle_librarian"]),
 						extension(resolve(repositoryRoot, "node_modules/@tintinweb/pi-subagents/src/index.ts"), [
 							"Agent",
 							"get_subagent_result",
@@ -201,7 +203,8 @@ describe("package distribution", () => {
 				"grep",
 				"find",
 				"ls",
-				"oracle_research",
+				"oracle_finder",
+				"oracle_librarian",
 				"web_search",
 				"fetch_content",
 				"get_search_content",
@@ -260,7 +263,8 @@ describe("package distribution", () => {
 				"find",
 				"ls",
 				"Agent",
-				"oracle_research",
+				"oracle_finder",
+				"oracle_librarian",
 				"web_search",
 				"fetch_content",
 				"get_search_content",

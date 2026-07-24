@@ -11,7 +11,8 @@ import {
 	saveCompactionModelSelection,
 } from "./state.ts";
 
-export const ORACLE_RESEARCH_TOOL_NAME = "oracle_research";
+export const ORACLE_FINDER_TOOL_NAME = "oracle_finder";
+export const ORACLE_LIBRARIAN_TOOL_NAME = "oracle_librarian";
 
 const ORACLE_ACTIVE_AGENT_TAG = '<active_agent name="Oracle"/>';
 const SUBAGENT_RPC_TIMEOUT_MS = 5_000;
@@ -39,10 +40,11 @@ function errorMessage(value: unknown): string {
 	return value instanceof Error ? value.message : String(value);
 }
 
-function runOracleResearch(
+function runOracleSubagentResearch(
 	pi: ExtensionAPI,
 	params: { prompt: string; description: string },
 	signal: AbortSignal | undefined,
+	type: "Explore" | "Librarian",
 ): Promise<{
 	content: [{ type: "text"; text: string }];
 	details: Omit<SubagentEvent, "result" | "error">;
@@ -171,7 +173,7 @@ function runOracleResearch(
 		signal?.addEventListener("abort", onAbort, { once: true });
 		pi.events.emit("subagents:rpc:spawn", {
 			requestId,
-			type: "Explore",
+			type,
 			prompt: params.prompt,
 			options: {
 				description: params.description,
@@ -182,12 +184,28 @@ function runOracleResearch(
 	});
 }
 
-function registerOracleResearchTool(pi: ExtensionAPI): void {
+function runOracleFinder(
+	pi: ExtensionAPI,
+	params: { prompt: string; description: string },
+	signal: AbortSignal | undefined,
+) {
+	return runOracleSubagentResearch(pi, params, signal, "Explore");
+}
+
+function runOracleLibrarian(
+	pi: ExtensionAPI,
+	params: { prompt: string; description: string },
+	signal: AbortSignal | undefined,
+) {
+	return runOracleSubagentResearch(pi, params, signal, "Librarian");
+}
+
+function registerOracleFinderTool(pi: ExtensionAPI): void {
 	pi.registerTool({
-		name: ORACLE_RESEARCH_TOOL_NAME,
-		label: "Oracle Research",
+		name: ORACLE_FINDER_TOOL_NAME,
+		label: "Oracle Finder",
 		description:
-			"Delegate one focused, read-only codebase discovery question to the Explore subagent and wait for its distilled findings. Intended for Oracle when multi-step repository research would otherwise consume its advisory context. Do not delegate implementation, final judgment, or another Oracle review.",
+			"Delegate one focused, read-only local codebase discovery question to the Explore subagent and wait for its distilled findings. Intended for Oracle when multi-step workspace research would otherwise consume its advisory context. Do not delegate external repository research, implementation, final judgment, or another Oracle review.",
 		parameters: Type.Object({
 			prompt: Type.String({
 				description:
@@ -197,7 +215,26 @@ function registerOracleResearchTool(pi: ExtensionAPI): void {
 				description: "A short 3-5 word description of the research task.",
 			}),
 		}),
-		execute: async (_toolCallId, params, signal) => runOracleResearch(pi, params, signal),
+		execute: async (_toolCallId, params, signal) => runOracleFinder(pi, params, signal),
+	});
+}
+
+function registerOracleLibrarianTool(pi: ExtensionAPI): void {
+	pi.registerTool({
+		name: ORACLE_LIBRARIAN_TOOL_NAME,
+		label: "Oracle Librarian",
+		description:
+			"Delegate one focused, read-only external source-code research question to the Librarian subagent and wait for its evidence-backed answer. Intended for Oracle when authoritative dependency or remote-repository research would otherwise consume its advisory context. Do not delegate local workspace discovery, implementation, or final judgment.",
+		parameters: Type.Object({
+			prompt: Type.String({
+				description:
+					"A self-contained external codebase research request naming the repository or project when known, the relevant ref or version, the exact question, and the evidence or immutable source links to return.",
+			}),
+			description: Type.String({
+				description: "A short 3-5 word description of the external research task.",
+			}),
+		}),
+		execute: async (_toolCallId, params, signal) => runOracleLibrarian(pi, params, signal),
 	});
 }
 
@@ -242,7 +279,10 @@ export default function piSuite(pi: ExtensionAPI): void {
 
 	pi.on("session_start", (_event, ctx) => {
 		completedCustomCompaction = undefined;
-		if (ctx.getSystemPrompt().startsWith(ORACLE_ACTIVE_AGENT_TAG)) registerOracleResearchTool(pi);
+		if (ctx.getSystemPrompt().startsWith(ORACLE_ACTIVE_AGENT_TAG)) {
+			registerOracleFinderTool(pi);
+			registerOracleLibrarianTool(pi);
+		}
 		reloadSelection(ctx);
 		if (ctx.mode !== "tui") return;
 

@@ -5,8 +5,9 @@ Pi Suite bundles [`@tintinweb/pi-subagents`](https://github.com/tintinweb/pi-sub
 context with intermediate searches; `Librarian`, which uses Web Access for authoritative source-code research outside the
 local workspace; and `Oracle`, which provides an independent expert second opinion through GPT-5.6 Sol with high thinking.
 Oracle selectively loads Pi Suite, Subagents, and Web Access so it can delegate focused repository discovery through
-`oracle_research` and retrieve external evidence without inheriting unrelated extension tools. Use this guide when adding
-another type in a later change.
+`oracle_finder`, delegate authoritative external source-code research through `oracle_librarian`, and retrieve
+narrow external evidence without inheriting unrelated extension tools. Use this guide when adding another type in a later
+change.
 
 ## Define the agent
 
@@ -86,23 +87,25 @@ autonomous child session.
 Librarian keeps `skills: true` so user-installed repository-research skills can contribute authenticated read-only sources,
 for example through a configured Sourcegraph CLI. The curated prompt remains the source of Librarian's role and safety
 boundary; inherited skills provide workflows, not a replacement identity. Pi Suite still does not register
-`pi-web-access`'s bundled Librarian skill. Unlike Oracle, Librarian needs no recursive delegation or Pi Suite adapter, so do
-not load `pi-suite` or `pi-subagents` into its child session.
+`pi-web-access`'s bundled Librarian skill. Librarian's own child session does not recursively delegate, so it does not load
+`pi-suite` or `pi-subagents`; it remains available as the fixed spawn target of Oracle's scoped Librarian adapter.
 
-## Scope recursive delegation to one subagent
+## Scope recursive delegation to specific research subagents
 
 `pi-subagents` deliberately removes its own `Agent`, `get_subagent_result`, and `steer_subagent` tools from every child
 session, even when selected in frontmatter. This prevents unrestricted recursive spawning. Oracle still needs Finder-like
-repository discovery, so Pi Suite provides one narrow exception: Oracle can call `oracle_research`, which can launch only
-the read-only `Explore` type. This does not weaken or patch the upstream recursion guard.
+local repository discovery and deep external source-code research, so Pi Suite provides two narrow exceptions:
+`oracle_finder` can launch only the read-only `Explore` type, while `oracle_librarian` can launch only the
+read-only `Librarian` type. Neither tool accepts a child type or model parameter. This does not weaken or patch the upstream
+recursion guard.
 
 ```text
-Main Pi agent                         Oracle child                         Explore child
-┌──────────────────┐   Agent tool    ┌──────────────────┐ oracle_research ┌──────────────────┐
-│ No               │───────────────▶│ Tool registered  │───────────────▶│ Read-only        │
-│ oracle_research  │                │ only in this     │                │ repository       │
-│ tool or schema   │◀───────────────│ child session    │◀───────────────│ discovery        │
-└──────────────────┘ Oracle answer  └──────────────────┘ distilled facts └──────────────────┘
+Main Pi agent                         Oracle child                       Research child
+┌──────────────────┐   Agent tool    ┌────────────────────┐ fixed tool  ┌──────────────────┐
+│ No Oracle        │───────────────▶│ oracle_finder      │────────────▶│ Explore: local   │
+│ research tools   │                │ oracle_librarian   │────────────▶│ Librarian:       │
+│ or schemas       │◀───────────────│                    │◀────────────│ external source  │
+└──────────────────┘ Oracle answer  └────────────────────┘ evidence     └──────────────────┘
 ```
 
 ### Select the tool explicitly
@@ -111,15 +114,15 @@ Oracle's frontmatter loads Pi Suite, Subagents, and Web Access, then uses `ext:`
 from those extensions:
 
 ```yaml
-tools: "*, ext:pi-suite/oracle_research, ext:pi-web-access/web_search, ext:pi-web-access/fetch_content, ext:pi-web-access/get_search_content"
+tools: "*, ext:pi-suite/oracle_finder, ext:pi-suite/oracle_librarian, ext:pi-web-access/web_search, ext:pi-web-access/fetch_content, ext:pi-web-access/get_search_content"
 disallowed_tools: edit, write
 extensions: [pi-suite, pi-subagents, pi-web-access]
 skills: false
 ```
 
 Loading an extension and exposing its tools are separate decisions. `extensions:` lets Pi Suite initialize inside the child;
-`ext:pi-suite/oracle_research` adds only that named tool to Oracle's eventual active set. Subagents' own recursive tools
-remain hard-excluded by upstream code.
+The two `ext:pi-suite/` selectors add only the fixed Explore and Librarian adapters to Oracle's eventual active set.
+Subagents' own recursive tools remain hard-excluded by upstream code.
 
 ### Register after identifying the child
 
@@ -134,14 +137,14 @@ Subagents includes an identity marker in every generated child system prompt for
 ```
 
 Pi Suite checks that marker during `session_start` and calls `registerTool` only in the matching Oracle extension runtime.
-A normal main session has no marker, so `oracle_research` is never registered there. This is schema isolation rather than an
-execution-time rejection: the main model cannot see or call the tool.
+A normal main session has no marker, so neither Oracle research tool is registered there. This is schema isolation rather
+than an execution-time rejection: the main model cannot see or call either tool.
 
 The lifecycle ordering is important:
 
 1. Subagents creates a child resource loader and loads the selected extensions.
 2. It builds the child prompt, including the `<active_agent>` marker.
-3. It binds surviving extensions, which fires `session_start`; Pi Suite now registers `oracle_research`.
+3. It binds surviving extensions, which fires `session_start`; Pi Suite now registers both Oracle research tools.
 4. After binding, Subagents derives the active extension-tool set from the loader's live tool maps. This picks up the
    late-registered adapter and applies Oracle's `ext:` narrowing before the first model turn.
 
@@ -155,8 +158,9 @@ surviving Pi Subagents extension:
 
 1. Generate a unique request ID and subscribe to its spawn-reply channel plus `subagents:completed` and
    `subagents:failed`.
-2. Emit `subagents:rpc:spawn` with the type hard-coded to `Explore`, `inheritContext: false`, and foreground execution.
-3. Wait for the Explore result and return only its distilled output to Oracle.
+2. Emit `subagents:rpc:spawn` with the adapter's type hard-coded to `Explore` or `Librarian`, `inheritContext: false`, and
+   foreground execution.
+3. Wait for the child result and return only its distilled output to Oracle.
 4. On cancellation, emit `subagents:rpc:stop`; on failure, propagate the child error; in every terminal path, remove event
    listeners and timers.
 
@@ -166,15 +170,17 @@ agent IDs keep concurrent Oracle research calls isolated.
 
 The resulting boundary is intentionally narrower than general recursive delegation:
 
-- the adapter accepts no child type or model parameter and can spawn only `Explore`;
-- Explore does not inherit Oracle's conversation and returns distilled evidence rather than a second judgment;
+- each adapter accepts no child type or model parameter and can spawn only its named `Explore` or `Librarian` child;
+- neither child inherits Oracle's conversation; Explore returns distilled local evidence and Librarian returns a
+  self-contained external research answer rather than a second judgment;
 - Oracle remains responsible for interpreting the findings and producing the final recommendation;
 - `edit` and `write` are structurally denied for Oracle, while Explore exposes only read-oriented built-ins; and
-- the main Pi agent has no `oracle_research` registration, active tool, or tool schema.
+- the main Pi agent has no Oracle research registration, active tool, or tool schema.
 
-Keep tests for both sides of the boundary: a normal session must not register `oracle_research`, an Oracle-marked session
-must register it, and Subagents' real scope parser must resolve Oracle's final tool set without its generic recursive tools.
-If upstream adds a first-class per-agent tool registration or constrained-delegation API, prefer it over this adapter.
+Keep tests for both sides of the boundary: a normal session must not register either research tool, an Oracle-marked session
+must register both, each tool must spawn only its fixed child type, and Subagents' real scope parser must resolve Oracle's
+final tool set without its generic recursive tools. If upstream adds a first-class per-agent tool registration or
+constrained-delegation API, prefer it over these adapters.
 
 ## Add it to Pi Suite
 
