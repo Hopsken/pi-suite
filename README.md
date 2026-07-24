@@ -71,15 +71,27 @@ All four packages are pinned and bundled into `pi-suite`, so `pi install npm:pi-
 compaction feature. The suite exposes only the Web Access extension; it does not register `pi-web-access`'s optional
 Librarian skill.
 
-Run `/setup-agents` once to install Pi Suite's finder-style, read-only `Explore` subagent globally. `Explore` handles
-behavior- and concept-based discovery, chained searches, call-path tracing, and correlations across multiple code areas in
-an isolated context, then returns concise findings with file and line evidence to the parent agent. Pi should use its direct
-read, grep, and find tools instead for known paths, symbols, and exact strings, and can launch multiple `Explore` agents in
-parallel for independent discovery questions.
+Run `/setup-agents` once to install Pi Suite's read-only `Explore` and `Oracle` subagents globally:
 
-The command writes to `$PI_CODING_AGENT_DIR/agents` (normally `~/.pi/agent/agents`), preserves an existing customized
-`Explore.md`, and disables the upstream default agents in favor of suite and user definitions. Run `/reload` afterward.
-See [Adding a subagent type](docs/adding-subagent-types.md) when extending the suite's preset catalog.
+- **Explore** provides finder-style behavior and concept discovery, chained searches, call-path tracing, and cross-module
+  correlation in an isolated context. It returns concise findings with file and line evidence. Pi should use its direct
+  read, grep, and find tools instead for known paths, symbols, and exact strings, and can launch multiple `Explore` agents
+  in parallel for independent discovery questions. It is pinned to GPT-5.6 Terra with low thinking.
+- **Oracle** provides an independent expert second opinion for tricky reviews, subtle bugs, architecture or design
+  tradeoffs, and complex implementation plans. Brief it with one focused question, the intent, relevant files or git refs,
+  constraints, risks or alternatives to assess, and the desired output. It advises only; the parent agent remains
+  responsible for applying and verifying recommendations. It can retrieve current external evidence with the bundled Web
+  Access tools and delegate focused multi-step repository discovery to the read-only `Explore` type. It is pinned to GPT-5.6
+  Sol with high thinking.
+
+The command writes to `$PI_CODING_AGENT_DIR/agents` (normally `~/.pi/agent/agents`), preserves existing customized
+definitions, and disables the upstream default agents in favor of suite and user definitions. Run `/reload` afterward. Both
+presets disable skills. Explore exposes only read-oriented built-ins. Oracle uses Subagents' `disallowed_tools` denylist to
+structurally remove `edit` and `write`, and selectively exposes Pi Suite's `oracle_research` adapter plus Web Access's
+`web_search`, `fetch_content`, and `get_search_content`; it does not inherit other extension tools. Pi Suite registers
+`oracle_research` only inside the Oracle child session, so the adapter is absent from the main Pi agent's tool schema.
+Because both presets retain Bash for repository inspection, their non-mutating shell policy is prompt-enforced rather than
+sandboxed. See [Adding a subagent type](docs/adding-subagent-types.md) when extending the suite's preset catalog.
 
 ## Install
 
@@ -95,8 +107,8 @@ Or install directly from a Git repository:
 pi install git:github.com/Hopsken/pi-suite
 ```
 
-Restart Pi after installation or run `/reload`, run `/setup-agents` once, then run `/reload` again to use `Explore`. Use
-`/agents` to manage subagents and `/compaction-model` to configure compaction.
+Restart Pi after installation or run `/reload`, run `/setup-agents` once, then run `/reload` again to use `Explore` and
+`Oracle`. Use `/agents` to manage subagents and `/compaction-model` to configure compaction.
 
 To install the curated packages piece by piece instead, use:
 

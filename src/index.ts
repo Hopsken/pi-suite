@@ -1,5 +1,7 @@
+import { randomUUID } from "node:crypto";
 import { clampThinkingLevel, getSupportedThinkingLevels } from "@earendil-works/pi-ai";
 import { compact, type ExtensionAPI, type ExtensionContext } from "@earendil-works/pi-coding-agent";
+import { Type } from "typebox";
 import { installAgentPresets } from "./agent-presets.ts";
 import { type CompactionModelChoice, CompactionModelSelector } from "./model-selector.ts";
 import {
@@ -8,6 +10,196 @@ import {
 	loadCompactionModelSelection,
 	saveCompactionModelSelection,
 } from "./state.ts";
+
+export const ORACLE_RESEARCH_TOOL_NAME = "oracle_research";
+
+const ORACLE_ACTIVE_AGENT_TAG = '<active_agent name="Oracle"/>';
+const SUBAGENT_RPC_TIMEOUT_MS = 5_000;
+
+type SubagentEvent = {
+	id: string;
+	result?: string;
+	error?: string;
+	status?: string;
+	toolUses?: number;
+	durationMs?: number;
+	tokens?: { input: number; output: number; total: number };
+};
+
+type SubagentRpcReply = { success: true; data?: { id?: unknown } } | { success: false; error?: unknown };
+
+function asSubagentEvent(value: unknown): SubagentEvent | undefined {
+	if (typeof value !== "object" || value === null) return undefined;
+	const event = value as Record<string, unknown>;
+	if (typeof event.id !== "string") return undefined;
+	return event as SubagentEvent;
+}
+
+function errorMessage(value: unknown): string {
+	return value instanceof Error ? value.message : String(value);
+}
+
+function runOracleResearch(
+	pi: ExtensionAPI,
+	params: { prompt: string; description: string },
+	signal: AbortSignal | undefined,
+): Promise<{
+	content: [{ type: "text"; text: string }];
+	details: Omit<SubagentEvent, "result" | "error">;
+}> {
+	return new Promise((resolve, reject) => {
+		const requestId = randomUUID();
+		const replyChannel = `subagents:rpc:spawn:reply:${requestId}`;
+		const pendingTerminalEvents = new Map<string, { event: SubagentEvent; failed: boolean }>();
+		let agentId: string | undefined;
+		let aborted = signal?.aborted ?? false;
+		let settled = false;
+		let replyTimer: ReturnType<typeof setTimeout>;
+
+		let unsubscribeReply = () => {};
+		const unsubscribeCompleted = pi.events.on("subagents:completed", (value) => {
+			handleTerminalEvent(value, false);
+		});
+		const unsubscribeFailed = pi.events.on("subagents:failed", (value) => {
+			handleTerminalEvent(value, true);
+		});
+
+		const cleanup = () => {
+			clearTimeout(replyTimer);
+			unsubscribeReply();
+			unsubscribeCompleted();
+			unsubscribeFailed();
+			signal?.removeEventListener("abort", onAbort);
+		};
+
+		const finish = (event: SubagentEvent, failed: boolean) => {
+			if (settled) return;
+			settled = true;
+			cleanup();
+			if (failed) {
+				reject(new Error(event.error || `Research subagent stopped with status ${event.status ?? "unknown"}.`));
+				return;
+			}
+			resolve({
+				content: [{ type: "text", text: event.result?.trim() || "Research subagent returned no output." }],
+				details: {
+					id: event.id,
+					status: event.status,
+					toolUses: event.toolUses,
+					durationMs: event.durationMs,
+					tokens: event.tokens,
+				},
+			});
+		};
+
+		function handleTerminalEvent(value: unknown, failed: boolean): void {
+			const event = asSubagentEvent(value);
+			if (!event) return;
+			if (!agentId) {
+				pendingTerminalEvents.set(event.id, { event, failed });
+				return;
+			}
+			if (event.id === agentId) finish(event, failed);
+		}
+
+		const stopAgent = (id: string) => {
+			pi.events.emit("subagents:rpc:stop", { requestId: randomUUID(), agentId: id });
+		};
+
+		function onAbort(): void {
+			aborted = true;
+			if (!agentId) return;
+			stopAgent(agentId);
+			if (!settled) {
+				settled = true;
+				cleanup();
+				reject(signal?.reason ?? new Error("Oracle research was cancelled."));
+			}
+		}
+
+		unsubscribeReply = pi.events.on(replyChannel, (value) => {
+			const reply = value as SubagentRpcReply;
+			if (!reply || reply.success !== true) {
+				if (!settled) {
+					settled = true;
+					cleanup();
+					reject(
+						new Error(`Could not start the research subagent: ${errorMessage(reply?.error ?? "unknown error")}`),
+					);
+				}
+				return;
+			}
+
+			const id = reply.data?.id;
+			if (typeof id !== "string") {
+				if (!settled) {
+					settled = true;
+					cleanup();
+					reject(new Error("Could not start the research subagent: the RPC response contained no agent ID."));
+				}
+				return;
+			}
+
+			agentId = id;
+			clearTimeout(replyTimer);
+			unsubscribeReply();
+			if (aborted) {
+				stopAgent(id);
+				if (!settled) {
+					settled = true;
+					cleanup();
+					reject(signal?.reason ?? new Error("Oracle research was cancelled."));
+				}
+				return;
+			}
+
+			const terminal = pendingTerminalEvents.get(id);
+			if (terminal) finish(terminal.event, terminal.failed);
+		});
+
+		replyTimer = setTimeout(() => {
+			if (settled) return;
+			settled = true;
+			cleanup();
+			reject(
+				aborted
+					? (signal?.reason ?? new Error("Oracle research was cancelled."))
+					: new Error("Could not start the research subagent: pi-subagents did not answer the spawn request."),
+			);
+		}, SUBAGENT_RPC_TIMEOUT_MS);
+
+		signal?.addEventListener("abort", onAbort, { once: true });
+		pi.events.emit("subagents:rpc:spawn", {
+			requestId,
+			type: "Explore",
+			prompt: params.prompt,
+			options: {
+				description: params.description,
+				isBackground: false,
+				inheritContext: false,
+			},
+		});
+	});
+}
+
+function registerOracleResearchTool(pi: ExtensionAPI): void {
+	pi.registerTool({
+		name: ORACLE_RESEARCH_TOOL_NAME,
+		label: "Oracle Research",
+		description:
+			"Delegate one focused, read-only codebase discovery question to the Explore subagent and wait for its distilled findings. Intended for Oracle when multi-step repository research would otherwise consume its advisory context. Do not delegate implementation, final judgment, or another Oracle review.",
+		parameters: Type.Object({
+			prompt: Type.String({
+				description:
+					"A self-contained engineering discovery request with concrete success criteria, likely directories or artifacts, and the evidence to return.",
+			}),
+			description: Type.String({
+				description: "A short 3-5 word description of the research task.",
+			}),
+		}),
+		execute: async (_toolCallId, params, signal) => runOracleResearch(pi, params, signal),
+	});
+}
 
 function modelLabel(model: { provider: string; id: string; name: string }): string {
 	return `${model.provider}/${model.id} — ${model.name}`;
@@ -50,6 +242,7 @@ export default function piSuite(pi: ExtensionAPI): void {
 
 	pi.on("session_start", (_event, ctx) => {
 		completedCustomCompaction = undefined;
+		if (ctx.getSystemPrompt().startsWith(ORACLE_ACTIVE_AGENT_TAG)) registerOracleResearchTool(pi);
 		reloadSelection(ctx);
 		if (ctx.mode !== "tui") return;
 
