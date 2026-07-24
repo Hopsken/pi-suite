@@ -5,6 +5,7 @@ extensions: false
 skills: false
 model: openai-codex/gpt-5.6-terra
 thinking: low
+max_turns: 50
 prompt_mode: replace
 ---
 

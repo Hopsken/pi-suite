@@ -88,12 +88,14 @@ describe("Pi Suite extension", () => {
 		expect(explorePreset).toContain("read-only codebase discovery specialist");
 		expect(explorePreset).toContain("model: openai-codex/gpt-5.6-terra");
 		expect(explorePreset).toContain("thinking: low");
+		expect(explorePreset).toContain("max_turns: 50");
 		expect(explorePreset).toContain("workspace-relative file paths and line numbers or ranges");
 		const librarianPath = join(agentDirectory, "agents", "Librarian.md");
 		const librarianPreset = readFileSync(librarianPath, "utf8");
 		expect(librarianPreset).toContain("read-only codebase-understanding specialist");
 		expect(librarianPreset).toContain("model: openai-codex/gpt-5.6-sol");
 		expect(librarianPreset).toContain("thinking: off");
+		expect(librarianPreset).toContain("max_turns: 50");
 		expect(librarianPreset).toContain("extensions: [pi-web-access]");
 		expect(librarianPreset).toContain("skills: true");
 		expect(librarianPreset).toContain("/tmp/pi-github-repos/<owner>/<repo>");
@@ -103,6 +105,7 @@ describe("Pi Suite extension", () => {
 		expect(oraclePreset).toContain("independent expert engineering adviser");
 		expect(oraclePreset).toContain("model: openai-codex/gpt-5.6-sol");
 		expect(oraclePreset).toContain("thinking: high");
+		expect(oraclePreset).toContain("max_turns: 120");
 		expect(oraclePreset).toContain("inherit_context: false");
 		expect(oraclePreset).toContain("run_in_background: false");
 		expect(oraclePreset).toContain("workspace-relative file paths and line numbers or ranges");

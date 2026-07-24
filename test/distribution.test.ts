@@ -59,6 +59,7 @@ describe("package distribution", () => {
 		expect(explorePreset).toContain("skills: false");
 		expect(explorePreset).toContain("model: openai-codex/gpt-5.6-terra");
 		expect(explorePreset).toContain("thinking: low");
+		expect(explorePreset).toContain("max_turns: 50");
 		expect(explorePreset).toContain("return only the distilled evidence");
 
 		const librarianPreset = readFileSync(resolve(repositoryRoot, "presets/agents/Librarian.md"), "utf8");
@@ -72,6 +73,7 @@ describe("package distribution", () => {
 		expect(librarianPreset).toContain("skills: true");
 		expect(librarianPreset).toContain("model: openai-codex/gpt-5.6-sol");
 		expect(librarianPreset).toContain("thinking: off");
+		expect(librarianPreset).toContain("max_turns: 50");
 		expect(librarianPreset).toContain("inherit_context: false");
 		expect(librarianPreset).toContain("run_in_background: false");
 		expect(librarianPreset).toContain('workflow: "none"');
@@ -92,6 +94,7 @@ describe("package distribution", () => {
 		expect(oraclePreset).toContain("skills: false");
 		expect(oraclePreset).toContain("model: openai-codex/gpt-5.6-sol");
 		expect(oraclePreset).toContain("thinking: high");
+		expect(oraclePreset).toContain("max_turns: 120");
 		expect(oraclePreset).toContain("inherit_context: false");
 		expect(oraclePreset).toContain("run_in_background: false");
 		expect(oraclePreset).toContain("independent expert engineering adviser");
@@ -128,6 +131,7 @@ describe("package distribution", () => {
 				skills: false,
 				model: "openai-codex/gpt-5.6-sol",
 				thinking: "high",
+				maxTurns: 120,
 				inheritContext: false,
 				runInBackground: false,
 			});
@@ -242,6 +246,7 @@ describe("package distribution", () => {
 				skills: true,
 				model: "openai-codex/gpt-5.6-sol",
 				thinking: "off",
+				maxTurns: 50,
 				inheritContext: false,
 				runInBackground: false,
 			});

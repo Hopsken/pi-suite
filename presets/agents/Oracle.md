@@ -6,6 +6,7 @@ extensions: [pi-suite, pi-subagents, pi-web-access]
 skills: false
 model: openai-codex/gpt-5.6-sol
 thinking: high
+max_turns: 120
 prompt_mode: replace
 inherit_context: false
 run_in_background: false

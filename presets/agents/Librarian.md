@@ -5,6 +5,7 @@ extensions: [pi-web-access]
 skills: true
 model: openai-codex/gpt-5.6-sol
 thinking: off
+max_turns: 50
 prompt_mode: replace
 inherit_context: false
 run_in_background: false
