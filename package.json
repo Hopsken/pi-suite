@@ -34,7 +34,7 @@
 		"@juicesharp/rpiv-btw": "2.0.0",
 		"proper-lockfile": "4.1.2"
 	},
-	"bundledDependencies": [
+	"bundleDependencies": [
 		"@juicesharp/rpiv-btw",
 		"@juicesharp/rpiv-ask-user-question"
 	],
