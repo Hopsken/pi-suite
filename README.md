@@ -54,10 +54,10 @@ The appropriate value depends on the session and desired retained history. Pi's 
 
 ### Curated Pi packages
 
-- **BTW** — [`@juicesharp/rpiv-btw`](https://github.com/juicesharp/rpiv-mono/tree/main/packages/btw) adds
+- **BTW** — [`@juicesharp/rpiv-btw`](https://github.com/juicesharp/rpiv-mono/tree/main/packages/rpiv-btw) adds
   `/btw <question>`, which asks the active model a side question without adding the exchange to the main transcript.
 - **Ask User Question** —
-  [`@juicesharp/rpiv-ask-user-question`](https://github.com/juicesharp/rpiv-mono/tree/main/packages/ask-user-question)
+  [`@juicesharp/rpiv-ask-user-question`](https://github.com/juicesharp/rpiv-mono/tree/main/packages/rpiv-ask-user-question)
   adds the `ask_user_question` tool, which gives the model a structured interactive questionnaire. English is available
   without the optional rpiv i18n package.
 
