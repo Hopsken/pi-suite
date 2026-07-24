@@ -1,3 +1,4 @@
+nodeLinker: hoisted
 allowBuilds:
   '@google/genai': true
   protobufjs: true

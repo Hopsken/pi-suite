@@ -54,8 +54,15 @@ The appropriate value depends on the session and desired retained history. Pi's 
 
 ### Curated Pi packages
 
-Curated third-party packages will be documented here as they are added. They are pinned and bundled into the published
-`pi-suite` artifact so one `pi install` provides the complete distribution.
+- **BTW** — [`@juicesharp/rpiv-btw`](https://github.com/juicesharp/rpiv-mono/tree/main/packages/btw) adds
+  `/btw <question>`, which asks the active model a side question without adding the exchange to the main transcript.
+- **Ask User Question** —
+  [`@juicesharp/rpiv-ask-user-question`](https://github.com/juicesharp/rpiv-mono/tree/main/packages/ask-user-question)
+  adds the `ask_user_question` tool, which gives the model a structured interactive questionnaire. English is available
+  without the optional rpiv i18n package.
+
+Both packages are pinned and bundled into `pi-suite`, so `pi install npm:pi-suite` loads them together with the compaction
+feature.
 
 ## Install
 
@@ -72,6 +79,16 @@ pi install git:github.com/Hopsken/pi-suite
 ```
 
 Restart Pi after installation or run `/reload`, then use `/compaction-model`.
+
+To install the curated packages piece by piece instead, use:
+
+```sh
+pi install npm:@juicesharp/rpiv-btw
+pi install npm:@juicesharp/rpiv-ask-user-question
+```
+
+Do not install either child package separately while `pi-suite` is active. Pi treats the aggregate and child as different
+package identities and may load duplicate command or tool registrations from separate module roots.
 
 ## Development
 

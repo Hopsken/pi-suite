@@ -19,7 +19,9 @@
 	},
 	"pi": {
 		"extensions": [
-			"./src/index.ts"
+			"./src/index.ts",
+			"./node_modules/@juicesharp/rpiv-btw/index.ts",
+			"./node_modules/@juicesharp/rpiv-ask-user-question/index.ts"
 		]
 	},
 	"peerDependencies": {
@@ -28,8 +30,14 @@
 		"@earendil-works/pi-tui": "*"
 	},
 	"dependencies": {
+		"@juicesharp/rpiv-ask-user-question": "2.0.0",
+		"@juicesharp/rpiv-btw": "2.0.0",
 		"proper-lockfile": "4.1.2"
 	},
+	"bundledDependencies": [
+		"@juicesharp/rpiv-btw",
+		"@juicesharp/rpiv-ask-user-question"
+	],
 	"devDependencies": {
 		"@biomejs/biome": "2.3.5",
 		"@earendil-works/pi-ai": "0.81.1",
@@ -64,5 +72,5 @@
 	"publishConfig": {
 		"access": "public"
 	},
-	"packageManager": "pnpm@11.15.1"
+	"packageManager": "pnpm@11.16.0"
 }

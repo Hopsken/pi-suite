@@ -8,6 +8,12 @@ importers:
 
   .:
     dependencies:
+      '@juicesharp/rpiv-ask-user-question':
+        specifier: 2.0.0
+        version: 2.0.0(@earendil-works/pi-coding-agent@0.81.1(ws@8.21.1)(zod@4.4.3))(@earendil-works/pi-tui@0.81.1)
+      '@juicesharp/rpiv-btw':
+        specifier: 2.0.0
+        version: 2.0.0(@earendil-works/pi-ai@0.81.1(ws@8.21.1)(zod@4.4.3))(@earendil-works/pi-coding-agent@0.81.1(ws@8.21.1)(zod@4.4.3))(@earendil-works/pi-tui@0.81.1)
       proper-lockfile:
         specifier: 4.1.2
         version: 4.1.2
@@ -247,6 +253,26 @@ packages:
 
   '@jridgewell/sourcemap-codec@1.5.5':
     resolution: {integrity: sha512-cYQ9310grqxueWbl+WuIUIaiUaDcj7WOq5fVhEljNVgRfOUhY9fy2zTvfoqWsnebh8Sl70VScFbICvJnLKB0Og==}
+
+  '@juicesharp/rpiv-ask-user-question@2.0.0':
+    resolution: {integrity: sha512-VvpqOT4UQtHjWGlXVAlMAUZoHjekneOmpGstJZrWinbH0UYt+4Kt3eTTW7VIORSYSwSYYjidZyoYT04Vx/zq0A==}
+    peerDependencies:
+      '@earendil-works/pi-coding-agent': '*'
+      '@earendil-works/pi-tui': '*'
+      '@juicesharp/rpiv-i18n': '*'
+    peerDependenciesMeta:
+      '@juicesharp/rpiv-i18n':
+        optional: true
+
+  '@juicesharp/rpiv-btw@2.0.0':
+    resolution: {integrity: sha512-4lOFNlNyeg0XvrnSYMhK5cKycuy7MN+0eJOzdM9NEUPHVr/nnZefkG+UYpkr74wWyybDtxKblR9GHDsezCOApw==}
+    peerDependencies:
+      '@earendil-works/pi-ai': '*'
+      '@earendil-works/pi-coding-agent': '*'
+      '@earendil-works/pi-tui': '*'
+
+  '@juicesharp/rpiv-config@2.0.0':
+    resolution: {integrity: sha512-DNqu/4J6mPt5VYI4DH60srFEP/2IXcH9SVVAlkvyDsm2GnRHKu6c68ytYVt5a4vJM1D47XxXESHRHxnUEwWRxg==}
 
   '@mariozechner/clipboard-darwin-arm64@0.3.9':
     resolution: {integrity: sha512-BfgV7vCEWZwJwZJw03r6bP5+tf0iI/ANuQYCxi9RNn7FrWB3yzGuMKCrNLRl6V761vXRdL8+OqZ0wd4TqlsNOQ==}
@@ -1637,6 +1663,23 @@ snapshots:
       - utf-8-validate
 
   '@jridgewell/sourcemap-codec@1.5.5': {}
+
+  '@juicesharp/rpiv-ask-user-question@2.0.0(@earendil-works/pi-coding-agent@0.81.1(ws@8.21.1)(zod@4.4.3))(@earendil-works/pi-tui@0.81.1)':
+    dependencies:
+      '@earendil-works/pi-coding-agent': 0.81.1(ws@8.21.1)(zod@4.4.3)
+      '@earendil-works/pi-tui': 0.81.1
+      '@juicesharp/rpiv-config': 2.0.0
+      typebox: 1.1.38
+
+  '@juicesharp/rpiv-btw@2.0.0(@earendil-works/pi-ai@0.81.1(ws@8.21.1)(zod@4.4.3))(@earendil-works/pi-coding-agent@0.81.1(ws@8.21.1)(zod@4.4.3))(@earendil-works/pi-tui@0.81.1)':
+    dependencies:
+      '@earendil-works/pi-ai': 0.81.1(ws@8.21.1)(zod@4.4.3)
+      '@earendil-works/pi-coding-agent': 0.81.1(ws@8.21.1)(zod@4.4.3)
+      '@earendil-works/pi-tui': 0.81.1
+
+  '@juicesharp/rpiv-config@2.0.0':
+    dependencies:
+      typebox: 1.1.38
 
   '@mariozechner/clipboard-darwin-arm64@0.3.9':
     optional: true
