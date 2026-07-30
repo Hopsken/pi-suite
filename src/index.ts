@@ -10,6 +10,7 @@ import {
 	loadCompactionModelSelection,
 	saveCompactionModelSelection,
 } from "./state.ts";
+import { registerToolsSelector } from "./tools-selector.ts";
 
 export const ORACLE_FINDER_TOOL_NAME = "oracle_finder";
 export const ORACLE_LIBRARIAN_TOOL_NAME = "oracle_librarian";
@@ -438,6 +439,10 @@ export default function piSuite(pi: ExtensionAPI): void {
 		// shown synchronously here.
 		setTimeout(() => ctx.ui.notify(completed.message, "info"), 0);
 	});
+
+	// Register last so session-scoped tools, such as Oracle's research tools,
+	// exist before a saved active-tool selection is restored.
+	registerToolsSelector(pi);
 }
 
 export {

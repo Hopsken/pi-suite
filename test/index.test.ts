@@ -24,8 +24,16 @@ function createExtensionApi() {
 			tools.set(tool.name, tool);
 		},
 		on(event: string, handler: Handler) {
-			handlers.set(event, handler);
+			const previous = handlers.get(event);
+			handlers.set(event, async (eventData: any, context: any) => {
+				await previous?.(eventData, context);
+				return handler(eventData, context);
+			});
 		},
+		appendEntry: vi.fn(),
+		getActiveTools: vi.fn(() => Array.from(tools.keys())),
+		getAllTools: vi.fn(() => Array.from(tools.keys(), (name) => ({ name }))),
+		setActiveTools: vi.fn(),
 		events: {
 			on(channel: string, handler: (data: unknown) => void) {
 				const listeners = eventHandlers.get(channel) ?? new Set();
@@ -51,6 +59,7 @@ async function createOracleExtensionApi() {
 			mode: "print",
 			hasUI: false,
 			getSystemPrompt: () => ORACLE_SYSTEM_PROMPT,
+			sessionManager: { getBranch: () => [] },
 			ui: { notify: vi.fn() },
 		},
 	);
@@ -147,6 +156,7 @@ describe("Pi Suite extension", () => {
 				mode: "print",
 				hasUI: false,
 				getSystemPrompt: () => "You are Pi's main coding agent.",
+				sessionManager: { getBranch: () => [] },
 				ui: { notify: vi.fn() },
 			},
 		);
