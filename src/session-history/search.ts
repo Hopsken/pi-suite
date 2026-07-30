@@ -2,7 +2,13 @@ import { isAbsolute } from "node:path";
 import type { SessionInfo } from "@earendil-works/pi-coding-agent";
 import { type EvidenceUnit, normalizeActivePath } from "./normalize.ts";
 import { normalizeQueryPath, normalizeText, type ParsedQuery, parseSessionQuery, type QueryClause } from "./query.ts";
-import { canonicalPath, discoverHistoricalSessions, loadHistoricalSession, MAX_TOTAL_OPENED_BYTES } from "./store.ts";
+import {
+	canonicalPath,
+	discoverHistoricalSessions,
+	loadHistoricalSession,
+	MAX_TOTAL_OPENED_BYTES,
+	RemainingSessionReadBudgetError,
+} from "./store.ts";
 
 export interface SearchMatch {
 	entryId: string;
@@ -22,8 +28,8 @@ export interface HistoricalSessionResult {
 }
 export interface HistoricalSearchResult {
 	sessions: HistoricalSessionResult[];
-	warnings: string[];
-	incomplete: boolean;
+	count: number;
+	hasMore: boolean;
 }
 export interface HistoricalSearchOptions {
 	query: string;
@@ -79,11 +85,13 @@ function unitMatches(unit: EvidenceUnit, clause: QueryClause): boolean {
 function snippet(unit: EvidenceUnit, clauses: QueryClause[]): string {
 	const text = unit.text.replace(/\s+/g, " ").trim();
 	if (!text) {
-		if (unit.tools.length) return `Tools: ${unit.tools.join(", ")}`;
+		let fallback = "";
+		if (unit.tools.length) fallback = `Tools: ${unit.tools.join(", ")}`;
 		if (unit.models.length)
-			return `Models: ${unit.models.map((model) => `${model.provider}/${model.model}`).join(", ")}`;
+			fallback = `Models: ${unit.models.map((model) => `${model.provider}/${model.model}`).join(", ")}`;
 		if (unit.files.length)
-			return `Files: ${unit.files.map((file) => file.relative ?? file.absolute ?? "(unknown)").join(", ")}`;
+			fallback = `Files: ${unit.files.map((file) => file.relative ?? file.absolute ?? "(unknown)").join(", ")}`;
+		return `${fallback.slice(0, 480)}${fallback.length > 480 ? "…" : ""}`;
 	}
 	let at = 0;
 	for (const clause of clauses)
@@ -104,8 +112,7 @@ export async function searchHistoricalSessions(options: HistoricalSearchOptions)
 	if (!Number.isInteger(limit) || limit < 1 || limit > 50) throw new Error("limit must be an integer from 1 to 50.");
 	const query = parseSessionQuery(options.query, options.now);
 	const discovered = await discoverHistoricalSessions(options);
-	const warnings = [...discovered.warnings];
-	let incomplete = discovered.incomplete,
+	let hasMore = discovered.hasMore,
 		opened = 0;
 	const candidates = discovered.sessions.filter((info) => metadataMatches(info, query, options.invokingCwd));
 	const results: (HistoricalSessionResult & { score: number; path: string; sameCwd: boolean })[] = [];
@@ -116,22 +123,16 @@ export async function searchHistoricalSessions(options: HistoricalSearchOptions)
 			try {
 				const remainingBytes = MAX_TOTAL_OPENED_BYTES - opened;
 				if (remainingBytes <= 0) {
-					warnings.push("Total opened session data capped at 512 MiB.");
-					incomplete = true;
+					hasMore = true;
 					break;
 				}
 				const loaded = await loadHistoricalSession(info, options.signal, remainingBytes);
 				opened += loaded.sizeBytes;
-				warnings.push(...loaded.warnings.map((warning) => `${info.id}: ${warning}`));
-				incomplete ||= loaded.incomplete;
 				const normalized = normalizeActivePath(loaded.activePath, info.cwd, options.signal);
 				units = normalized.units;
-				incomplete ||= normalized.incomplete;
-				warnings.push(...normalized.warnings.map((w) => `${info.id}: ${w}`));
 			} catch (error) {
 				if (options.signal?.aborted) throw options.signal.reason ?? error;
-				warnings.push(`Skipped session ${info.id}: ${error instanceof Error ? error.message : String(error)}`);
-				incomplete = true;
+				if (error instanceof RemainingSessionReadBudgetError) hasMore = true;
 				continue;
 			}
 		}
@@ -175,13 +176,13 @@ export async function searchHistoricalSessions(options: HistoricalSearchOptions)
 				a.path.localeCompare(b.path) ||
 				a.sessionId.localeCompare(b.sessionId),
 	);
-	const uniqueWarnings = [...new Set(warnings)];
+	hasMore ||= results.length > limit;
+	const sessions = results
+		.slice(0, limit)
+		.map(({ score: _score, path: _path, sameCwd: _sameCwd, ...result }) => result);
 	return {
-		sessions: results.slice(0, limit).map(({ score: _score, path: _path, sameCwd: _sameCwd, ...result }) => result),
-		warnings:
-			uniqueWarnings.length <= 100
-				? uniqueWarnings
-				: [...uniqueWarnings.slice(0, 100), `${uniqueWarnings.length - 100} additional warnings omitted.`],
-		incomplete,
+		sessions,
+		count: sessions.length,
+		hasMore,
 	};
 }

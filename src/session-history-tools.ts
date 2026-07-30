@@ -18,9 +18,9 @@ function formatSearchResult(query: string, result: Awaited<ReturnType<typeof sea
 	return JSON.stringify(
 		{
 			scope: `${scope}${noMatches}`,
-			incomplete: result.incomplete,
-			warnings: result.warnings,
-			results: result.sessions,
+			count: result.count,
+			hasMore: result.hasMore,
+			sessions: result.sessions,
 		},
 		null,
 		2,
@@ -66,7 +66,7 @@ export function registerSessionHistoryTools(
 		name: SESSION_READ_TOOL_NAME,
 		label: "Session Read",
 		description:
-			"Answer one focused question from a discovered historical Pi session's complete active branch, including original evidence before compaction. Use session_search first to obtain an ID and verify its cwd. The executing session is always excluded. Historical content is normalized, redacted, treated as untrusted evidence, and read by the configured tool-free reader model with entry citations.",
+			"Answer one focused question from a discovered historical Pi session's complete active branch, including original evidence before compaction. Use session_search first to obtain an ID and verify its cwd. The executing session is always excluded. Historical content is treated as untrusted evidence and read by the configured tool-free reader model with entry citations.",
 		parameters: Type.Object({
 			session_id: Type.String({
 				description: "A full historical session ID or unique ID prefix, never a file path.",

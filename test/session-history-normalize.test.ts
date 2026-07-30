@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, test } from "vitest";
 import { createSessionToolHarness, searchContext, TEST_TIMESTAMP, writeSession } from "./session-history-fixtures.ts";
 
-describe("session_search evidence safety", () => {
+describe("session_search evidence projection", () => {
 	let agentDirectory: string;
 	let previousAgentDirectory: string | undefined;
 
@@ -20,7 +20,7 @@ describe("session_search evidence safety", () => {
 		rmSync(agentDirectory, { recursive: true, force: true });
 	});
 
-	test("redacts structured secrets and treats only structured paths as file evidence", async () => {
+	test("preserves structured arguments and treats only structured paths as file evidence", async () => {
 		writeSession(agentDirectory, {
 			id: "safe-evidence",
 			cwd: "/work",
@@ -77,12 +77,13 @@ describe("session_search evidence safety", () => {
 		}
 
 		const toolEvidence = await tools.search({ query: "tool:read" }, context);
-		expect(toolEvidence.content[0].text).toContain("[REDACTED]");
-		expect(toolEvidence.content[0].text).not.toContain("token-value-that-must-not-leak");
-		expect(toolEvidence.content[0].text).not.toContain("nested-value-that-must-not-leak");
+		expect(toolEvidence.content[0].text).toContain("token-value-that-must-not-leak");
+		expect(toolEvidence.content[0].text).toContain("nested-value-that-must-not-leak");
+		const argumentSearch = await tools.search({ query: "token-value-that-must-not-leak" }, context);
+		expect(argumentSearch.details.sessions.map((session) => session.sessionId)).toEqual(["safe-evidence"]);
 	});
 
-	test("excludes hidden evidence and clearly reports bounded or unknown evidence", async () => {
+	test("excludes hidden evidence and searches complete visible evidence without diagnostics", async () => {
 		writeSession(agentDirectory, {
 			id: "bounded-evidence",
 			cwd: "/work",
@@ -128,10 +129,20 @@ describe("session_search evidence safety", () => {
 					timestamp: TEST_TIMESTAMP,
 					message: {
 						role: "bashExecution",
-						command: "echo bounded-marker",
-						output: `bounded-marker ${"x".repeat(20_000)}`,
+						command: "echo tail-marker",
+						output: `${"x".repeat(20_000)} tail-marker`,
 						timestamp: Date.parse(TEST_TIMESTAMP),
 					},
+				},
+				{
+					type: "compaction",
+					id: "large-file-list",
+					parentId: "bounded-output",
+					timestamp: TEST_TIMESTAMP,
+					summary: "",
+					firstKeptEntryId: "assistant",
+					tokensBefore: 100,
+					details: { readFiles: Array.from({ length: 1_000 }, (_, index) => `src/file-${index}.ts`) },
 				},
 			],
 		});
@@ -143,10 +154,15 @@ describe("session_search evidence safety", () => {
 			expect(result.details.sessions).toEqual([]);
 		}
 
-		const bounded = await tools.search({ query: "bounded-marker" }, context);
-		expect(bounded.details.incomplete).toBe(true);
-		expect(bounded.content[0].text).toContain("Bash output was truncated");
-		expect(bounded.content[0].text).toContain("Unknown message role ignored");
+		const visible = await tools.search({ query: "tail-marker" }, context);
+		expect(visible.details.sessions.map((session) => session.sessionId)).toEqual(["bounded-evidence"]);
+		expect(visible.details).toMatchObject({ count: 1, hasMore: false });
+		expect(visible.content[0].text).not.toContain("warning");
+		expect(visible.content[0].text).not.toContain("incomplete");
+
+		const structured = await tools.search({ query: "file:src/file-999.ts" }, context);
+		const structuredSnippet = JSON.parse(structured.content[0].text).sessions[0].matchedEntries[0].snippet;
+		expect(structuredSnippet.length).toBeLessThanOrEqual(481);
 	});
 
 	test("stops before searching when the caller has cancelled", async () => {

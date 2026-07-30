@@ -42,6 +42,8 @@ Pi Suite adds two tools for recovering evidence from earlier Pi sessions without
 
 Search covers sessions from **all historical working directories by default**. Every result includes its source cwd. Add
 `cwd:.` when the question must be restricted to the exact current directory. The executing session is always excluded.
+Search responses include `count` and `hasMore`; `hasMore` indicates that the caller can increase `limit` or narrow the query
+to retrieve additional matches.
 
 Examples:
 
@@ -66,10 +68,9 @@ older session can therefore run Pi's normal migration and rewrite. The extension
 branch, edit, or compact historical sessions, and it creates no persistent search index. Search and read use only the
 active branch, but `session_read` includes original active-path evidence that predates compaction.
 
-Before matching, display, or reader inference, Pi Suite excludes images, thinking, signatures, provider diagnostics, and
-opaque extension state; it also redacts known secret-like structured fields. This data minimization cannot guarantee that
-arbitrary secrets embedded in plain text are detected. Reader inference is tool-free and treats historical content as
-untrusted evidence.
+Pi Suite projects visible historical text and structured tool arguments as they were persisted; it does not redact session
+content. Images, thinking, signatures, provider diagnostics, hidden messages, and opaque extension state remain outside the
+tools' evidence model. Reader inference is tool-free and treats historical content as untrusted evidence.
 
 ### Pi reports "Nothing to compact"
 

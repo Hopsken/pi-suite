@@ -83,7 +83,7 @@ source cwd, and an exact current-cwd match receives a ranking preference when te
 ### Reading is question-directed
 
 `session_read` requires a concrete question. Its reader model extracts only evidence relevant to that question and reports
-when the evidence is missing, conflicting, or incomplete. It is not a generic compaction endpoint.
+when the evidence is missing or conflicting. It is not a generic compaction endpoint.
 
 ### Active branch only
 
@@ -111,8 +111,8 @@ longer present in the resumed model context.
 For a persisted historical session, "active branch" means the root-to-leaf path Pi would use when resuming that file. The
 implementation obtains Pi's selected leaf and entries through `SessionManager`, rather than asking the reader model to
 infer a branch. A thin extension-side traversal guard remains cycle-safe and depth-bounded because Pi 0.81.1's public
-`getBranch()` assumes a valid parent chain. A broken parent chain produces a warning and a partial path; it must not cause
-traversal into another branch.
+`getBranch()` assumes a valid parent chain. Search skips a session with a broken parent chain, while reading that explicit
+session fails; neither path may traverse into another branch.
 
 ## User workflow
 
@@ -122,7 +122,7 @@ Agent
   <- matching historical session IDs, cwd values, metadata, and snippets
   -> session_read(session_id, question)
   -> configured reader model examines the normalized active path
-  <- focused answer, decisions, evidence references, and warnings
+  <- focused answer, decisions, and evidence references
 ```
 
 Typical searches:
@@ -184,8 +184,8 @@ The local search representation includes:
 
 - session ID, effective name, cwd, creation time, and logical modified time;
 - visible user and assistant text on the active path;
-- tool names and sanitized, bounded argument text on the active path;
-- bounded textual tool results and tool errors on the active path;
+- tool names and persisted argument text on the active path;
+- visible textual tool results and tool errors on the active path;
 - compaction and branch-summary text encountered on the active path;
 - visible `custom_message` content; and
 - assistant provider/model metadata and model-change entries.
@@ -199,9 +199,8 @@ It excludes:
 - opaque extension `custom.data`; and
 - unbounded `details` objects.
 
-Structured fields with secret-like keys, including authorization, token, password, cookie, and API-key fields, are redacted
-before indexing or display. This is data minimization, not a guarantee that arbitrary secrets embedded in plain text can be
-detected.
+The tools do not redact historical content. Visible text and structured tool arguments participate as they were persisted
+in the Pi session.
 
 ### `file:` semantics
 
@@ -227,7 +226,19 @@ An explicit `cwd:` filter overrides the need for any cwd preference.
 
 ### Result
 
-Each session result must provide enough visible text for the caller to select a session without reading it in full:
+The result envelope separates response limiting from search failure:
+
+```ts
+{
+  count: number;
+  hasMore: boolean;
+  sessions: SessionSearchResult[];
+}
+```
+
+`count` is the number of returned sessions. `hasMore` is true when matching sessions were omitted by `limit` or when a
+global discovery/read budget prevented the remaining candidates from being searched. Each session result provides enough
+visible text for the caller to select a session without reading it in full:
 
 ```ts
 {
@@ -248,13 +259,9 @@ Each session result must provide enough visible text for the caller to select a 
 ```
 
 The model-visible tool content must prominently show `sessionId` and `cwd`. Return at most three bounded snippets per
-session. Tool details may also carry the structured representation for UI rendering and diagnostics, but required agent
-information must not exist only in hidden details.
-
-If Pi reports that a session cannot be opened, the result includes an aggregate warning without failing unrelated valid
-sessions. Pi 0.81.1 silently skips malformed JSONL lines during discovery and opening, so line-level malformed counts are
-best-effort rather than reconstructed by the extension. Reaching an implementation resource limit must produce an explicit
-incomplete-results warning; it must never look like a complete empty result.
+session. Tool details may also carry the structured representation for UI rendering, but required agent information must
+not exist only in hidden details. A session that cannot be opened or traversed is skipped without adding diagnostics to
+otherwise valid results. Pi 0.81.1 silently skips malformed JSONL lines during discovery and opening.
 
 ## Tool: `session_read`
 
@@ -284,14 +291,14 @@ Normalized material may include:
 
 - session ID, effective name, cwd, and timestamps;
 - visible user and assistant text;
-- sanitized and bounded tool calls, results, and errors;
+- persisted tool calls and visible textual results and errors;
 - compaction and branch summaries present on the active path;
 - visible custom messages;
 - model changes; and
 - stable entry IDs attached to each evidence unit.
 
-The same exclusions and redaction rules as search apply. Session content is untrusted evidence, not instructions to the
-reader model.
+The same visibility rules as search apply, including no secret redaction. Session content is untrusted evidence, not
+instructions to the reader model.
 
 ### Question-directed inference
 
@@ -302,7 +309,7 @@ The reader model receives no tools. Its system instructions must require it to:
 - distinguish established decisions, proposals, attempts, outcomes, and unresolved points;
 - avoid revealing content unrelated to the question;
 - cite the relevant session and entry IDs for material claims;
-- state when evidence is missing, conflicting, malformed, or incomplete; and
+- state when evidence is missing or conflicting; and
 - never claim that a decision from another cwd is a current-project decision without identifying its source.
 
 If normalized material fits within the configured input budget, the tool uses one inference call. If it does not fit, the
@@ -311,11 +318,11 @@ tool performs bounded hierarchical reading with the same configured model:
 1. split material on entry or turn boundaries;
 2. ask each chunk to extract question-relevant evidence with entry IDs;
 3. synthesize the extracted evidence in a final call; and
-4. preserve warnings and provenance through the reduction.
+4. preserve provenance through the reduction.
 
 The implementation must not silently select only the beginning, end, or lexical matches of an oversized session. If a
-total processing limit prevents every normalized entry from being examined, the final answer is explicitly marked
-incomplete and describes the omitted range.
+total processing limit prevents every normalized entry from being examined, the tool returns an error rather than a partial
+answer.
 
 ### Reader output
 
@@ -326,8 +333,7 @@ The model-visible result contains:
 3. relevant decisions and reasons;
 4. relevant attempts and outcomes when applicable;
 5. evidence references in `session:<session-id>#<entry-id>` form;
-6. unresolved or conflicting information; and
-7. truncation, malformed-data, or incomplete-read warnings.
+6. unresolved or conflicting information.
 
 Tool details should include:
 
@@ -336,9 +342,6 @@ Tool details should include:
   sessionId: string;
   readerModel: string;
   inspectedEntries: number;
-  skippedMalformedEntries: number;
-  incomplete: boolean;
-  stopReason?: string;
 }
 ```
 
@@ -398,27 +401,27 @@ an exact-current-directory question, and the active session is always excluded.
 2. Default global search is disclosed in the tool description and documentation.
 3. Every search result and read answer visibly identifies its source cwd.
 4. Search returns short, bounded snippets rather than transcripts.
-5. Read sends only normalized, question-relevant session material through a tool-free inference path.
-6. Known structured secrets are redacted before matching, display, or inference; documentation must not promise complete
-   secret detection in arbitrary text.
-7. Images, signatures, diagnostics, and opaque extension state are excluded by default.
+5. Read sends active-path session material through a tool-free inference path.
+6. Search and read do not redact visible historical text or structured tool arguments.
+7. Images, signatures, diagnostics, hidden messages, and opaque extension state are excluded by default.
 8. Session text and tool output are treated as untrusted prompt content.
 9. Session lookup is restricted to discovered Pi session files. A crafted `parentSession` value must not permit arbitrary
    filesystem reads or traversal outside allowed session roots.
-10. Cancellation and resource limits produce explicit errors or incomplete warnings, not fabricated complete results.
+10. Cancellation and read-processing limits produce explicit errors; search response limits use `hasMore`.
 
 ## Performance and compatibility requirements
 
 - Use Pi's public `SessionManager.listAll()` and `SessionManager.open()` APIs for discovery, parsing, compatibility, and
   persisted leaf semantics.
 - Accept Pi's native migration and rewrite when opening supported older session versions.
-- Skip unknown future entry and content-block types with warnings rather than failing an otherwise usable session.
+- Silently skip unknown future entry and content-block types rather than failing an otherwise usable session.
 - Rely on Pi's parser to tolerate malformed lines, including an incomplete final JSONL line caused by a concurrent append.
 - Use cycle detection and a maximum traversal depth for parent chains.
 - Honor `AbortSignal` before and after Pi discovery/open calls, between sessions, during normalization, and throughout
   inference. Pi 0.81.1 does not expose mid-call cancellation for `listAll()` or synchronous `open()`.
-- Bound read concurrency, snippet size, tool argument/result material, model input, model output, and total hierarchical calls.
-- Never silently truncate a search or read because a bound was reached.
+- Bound snippet size, session file and total search bytes, model input, model output, and total hierarchical calls.
+- Search complete persisted visible text and truncate only returned snippets. If reader processing cannot examine all
+  evidence, return an error.
 - The first version may use an in-process cache keyed by canonical path, file size, and modification time. It does not add a
   durable index; a persistent index requires separate performance evidence and design review.
 
@@ -428,12 +431,12 @@ an exact-current-directory question, and the active session is always excluded.
 | --- | --- |
 | No search matches | Return an empty result and state that all historical cwd values were searched unless `cwd:` constrained it. |
 | Invalid query | Return a query error identifying the invalid token or value. |
-| One session Pi cannot discover or open | Skip it when observable, continue, and return an aggregate warning. |
-| Broken active parent chain | Use only the safe partial path and mark the result incomplete. |
+| One session Pi cannot discover, open, or traverse during search | Skip it and continue without adding diagnostics. |
+| Broken active parent chain during read | Return an error for the selected session. |
 | Ambiguous session ID prefix | Return matching IDs or require a full ID; do not choose one. |
 | Target is the executing session | Return an error explaining that the tools operate on historical sessions only. |
 | Configured reader model is missing or unauthenticated | Return an error; do not fall back to another model. |
-| Reader output reaches its length limit | Return the answer with an explicit truncation warning and stop reason. |
+| Reader output reaches its length limit | Return an error rather than a partial answer. |
 | Tool call is cancelled | Stop local work and inference promptly; do not abort the parent operation. |
 
 ## Acceptance criteria
@@ -449,7 +452,7 @@ an exact-current-directory question, and the active session is always excluded.
 9. One corrupt file or line does not prevent valid sessions from being returned.
 10. `session_read` rejects an empty question, arbitrary path, ambiguous ID prefix, and the executing session ID.
 11. `session_read` examines the full active path, including original entries preceding compaction.
-12. A long session uses question-directed hierarchical reading or reports explicitly that the read is incomplete.
+12. A long session uses question-directed hierarchical reading or returns an error without a partial answer.
 13. Material reader claims include valid session and entry references from the supplied evidence.
 14. A configured reader model is used with its selected thinking level and complete authentication context.
 15. Failure of an explicitly configured reader model does not invoke the active model.
@@ -463,7 +466,7 @@ an exact-current-directory question, and the active session is always excluded.
 
 Implementation should ship with:
 
-- unit tests for query parsing, active-path extraction, normalization, redaction, ranking, and failure handling;
+- unit tests for query parsing, active-path extraction, evidence projection, ranking, and failure handling;
 - integration tests using realistic Pi sessions, including compaction, native older-version migration, corruption, partial
   final lines, and sessions from multiple cwd values;
 - model tests using a faux provider for single-pass, hierarchical, authentication-failure, length, and cancellation paths;

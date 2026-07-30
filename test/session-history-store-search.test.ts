@@ -56,6 +56,19 @@ describe("platform-backed session history", () => {
 		const global = await tools.search({ query: '"shared evidence"' }, searchContext("/project/one"));
 		expect(global.details.sessions.map((session) => session.sessionId)).toEqual(["history-one", "history-two"]);
 		expect(global.details.sessions.every((session) => session.cwd.startsWith("/project/"))).toBe(true);
+		expect(global.details).toMatchObject({ count: 2, hasMore: false });
+		const envelope = JSON.parse(global.content[0].text);
+		expect(envelope).toMatchObject({ count: 2, hasMore: false });
+		expect(
+			envelope.sessions.map(({ sessionId, cwd }: { sessionId: string; cwd: string }) => ({ sessionId, cwd })),
+		).toEqual([
+			{ sessionId: "history-one", cwd: "/project/one" },
+			{ sessionId: "history-two", cwd: "/project/two" },
+		]);
+
+		const limited = await tools.search({ query: '"shared evidence"', limit: 1 }, searchContext("/project/one"));
+		expect(limited.details.sessions).toHaveLength(1);
+		expect(limited.details).toMatchObject({ count: 1, hasMore: true });
 
 		const active = await tools.search({ query: "active-only cwd:." }, searchContext("/project/one"));
 		expect(active.details.sessions.map((session) => session.sessionId)).toEqual(["history-one"]);
@@ -80,7 +93,7 @@ describe("platform-backed session history", () => {
 		expect(excludedByPath.details.sessions.map((session) => session.sessionId)).toEqual(["history-two"]);
 	});
 
-	test("returns safe partial results and warnings for malformed parent chains", async () => {
+	test("skips malformed parent chains without adding diagnostics to valid results", async () => {
 		writeSession(agentDirectory, {
 			id: "cycle-session",
 			cwd: "/project/cycle",
@@ -91,17 +104,23 @@ describe("platform-backed session history", () => {
 			cwd: "/project/broken",
 			entries: [userEntry("leaf", "missing", "partial evidence")],
 		});
+		writeSession(agentDirectory, {
+			id: "valid-session",
+			cwd: "/project/valid",
+			entries: [userEntry("valid", null, "valid evidence")],
+		});
 		const tools = createSessionToolHarness();
 
 		const cycle = await tools.search({ query: "first" }, searchContext("/project/cycle"));
-		expect(cycle.details.sessions.map((session) => session.sessionId)).toEqual(["cycle-session"]);
-		expect(cycle.details.incomplete).toBe(true);
-		expect(cycle.content[0].text).toContain("Cycle detected");
+		expect(cycle.details.sessions).toEqual([]);
 
 		const broken = await tools.search({ query: '"partial evidence"' }, searchContext("/project/broken"));
-		expect(broken.details.sessions.map((session) => session.sessionId)).toEqual(["broken-session"]);
-		expect(broken.details.incomplete).toBe(true);
-		expect(broken.content[0].text).toContain("Broken active-path parent");
+		expect(broken.details.sessions).toEqual([]);
+
+		const valid = await tools.search({ query: '"valid evidence"' }, searchContext("/project/valid"));
+		expect(valid.details.sessions.map((session) => session.sessionId)).toEqual(["valid-session"]);
+		expect(valid.content[0].text).not.toContain("warning");
+		expect(valid.content[0].text).not.toContain("incomplete");
 	});
 
 	test("composes platform metadata, model, tool, and date filters", async () => {

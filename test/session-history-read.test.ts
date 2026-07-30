@@ -123,7 +123,6 @@ describe("question-directed historical session reading", () => {
 			sessionId: "reader-session",
 			readerModel: "reader-provider/reader-model",
 			inspectedEntries: 2,
-			incomplete: false,
 		});
 		expect(request?.tools).toBeUndefined();
 		expect(request?.options).toMatchObject({
@@ -133,8 +132,7 @@ describe("question-directed historical session reading", () => {
 			reasoning: "high",
 		});
 		expect(request?.prompt).toContain("The team selected the queue");
-		expect(request?.prompt).toContain("[REDACTED]");
-		expect(request?.prompt).not.toContain("reader-secret-that-must-not-leak");
+		expect(request?.prompt).toContain("reader-secret-that-must-not-leak");
 	});
 
 	test("fails closed when the explicitly selected model cannot authenticate", async () => {
@@ -168,7 +166,7 @@ describe("question-directed historical session reading", () => {
 			id: "long-session",
 			cwd: "/project/reader",
 			entries: [
-				userEntry("long-one", null, `marker-one ${"a".repeat(12_000)}`),
+				userEntry("long-one", null, `marker-one ${"a".repeat(30_000)} marker-one-tail`),
 				userEntry("long-two", "long-one", `marker-two ${"b".repeat(12_000)}`),
 				userEntry("long-three", "long-two", `marker-three ${"c".repeat(12_000)}`),
 			],
@@ -195,13 +193,14 @@ describe("question-directed historical session reading", () => {
 		);
 
 		expect(prompts.join("\n")).toContain("marker-one");
+		expect(prompts.join("\n")).toContain("marker-one-tail");
 		expect(prompts.join("\n")).toContain("marker-two");
 		expect(prompts.join("\n")).toContain("marker-three");
 		expect(result.content[0].text).toContain("Relevant evidence");
-		expect(result.details).toMatchObject({ inspectedEntries: 3, incomplete: false });
+		expect(result.details).toMatchObject({ inspectedEntries: 3 });
 	});
 
-	test("marks length-limited output incomplete and propagates cancellation", async () => {
+	test("fails on length-limited output and propagates cancellation", async () => {
 		writeSession(agentDirectory, {
 			id: "stop-session",
 			cwd: "/project/reader",
@@ -217,12 +216,9 @@ describe("question-directed historical session reading", () => {
 			fauxAssistantMessage("Partial answer. session:stop-session#stop-entry", { stopReason: "length" }),
 		]);
 		const tools = createSessionToolHarness();
-		const limited = await tools.read(
-			{ session_id: "stop-session", question: "What happened?" },
-			createContext(model),
-		);
-		expect(limited.details).toMatchObject({ incomplete: true, stopReason: "length" });
-		expect(limited.content[0].text).toContain("length limit");
+		await expect(
+			tools.read({ session_id: "stop-session", question: "What happened?" }, createContext(model)),
+		).rejects.toThrow("length limit");
 
 		const controller = new AbortController();
 		faux.setResponses([

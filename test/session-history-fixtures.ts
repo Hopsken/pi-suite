@@ -28,8 +28,8 @@ interface ToolTextResult {
 interface SearchToolResult extends ToolTextResult {
 	details: {
 		sessions: Array<{ sessionId: string; cwd: string }>;
-		warnings: string[];
-		incomplete: boolean;
+		count: number;
+		hasMore: boolean;
 	};
 }
 
@@ -38,8 +38,6 @@ interface ReadToolResult extends ToolTextResult {
 		sessionId: string;
 		readerModel: string;
 		inspectedEntries: number;
-		incomplete: boolean;
-		stopReason?: string;
 	};
 }
 
