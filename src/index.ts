@@ -3,6 +3,7 @@ import { clampThinkingLevel, getSupportedThinkingLevels } from "@earendil-works/
 import { compact, type ExtensionAPI, type ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
 import { installAgentPresets } from "./agent-presets.ts";
+import { registerAvailableCliToolsPrompt } from "./available-cli-tools.ts";
 import { type ModelChoice, ModelSelector } from "./model-selector.ts";
 import { registerSessionHistoryTools } from "./session-history-tools.ts";
 import {
@@ -558,6 +559,8 @@ export default function piSuite(pi: ExtensionAPI): void {
 		// shown synchronously here.
 		setTimeout(() => ctx.ui.notify(completed.message, "info"), 0);
 	});
+
+	registerAvailableCliToolsPrompt(pi);
 
 	// Register last so session-scoped tools, such as Oracle's research tools,
 	// exist before a saved active-tool selection is restored.
