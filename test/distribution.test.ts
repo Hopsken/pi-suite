@@ -86,6 +86,8 @@ describe("package distribution", () => {
 		expect(oraclePreset).toContain("Consult a read-only expert for a second opinion");
 		expect(oraclePreset).toContain("ext:pi-suite/oracle_finder");
 		expect(oraclePreset).toContain("ext:pi-suite/oracle_librarian");
+		expect(oraclePreset).toContain("ext:pi-suite/session_search");
+		expect(oraclePreset).toContain("ext:pi-suite/session_read");
 		expect(oraclePreset).toContain("ext:pi-web-access/web_search");
 		expect(oraclePreset).toContain("ext:pi-web-access/fetch_content");
 		expect(oraclePreset).toContain("ext:pi-web-access/get_search_content");
@@ -138,7 +140,12 @@ describe("package distribution", () => {
 
 			const selectors = parseExtSelectors(oracle?.extSelectors ?? []);
 			expect([...selectors.extNames]).toEqual(["pi-suite", "pi-web-access"]);
-			expect([...(selectors.narrowing.get("pi-suite") ?? [])]).toEqual(["oracle_finder", "oracle_librarian"]);
+			expect([...(selectors.narrowing.get("pi-suite") ?? [])]).toEqual([
+				"oracle_finder",
+				"oracle_librarian",
+				"session_search",
+				"session_read",
+			]);
 			expect([...(selectors.narrowing.get("pi-web-access") ?? [])]).toEqual([
 				"web_search",
 				"fetch_content",
@@ -155,6 +162,8 @@ describe("package distribution", () => {
 				"ls",
 				"oracle_finder",
 				"oracle_librarian",
+				"session_search",
+				"session_read",
 				"Agent",
 				"get_subagent_result",
 				"steer_subagent",
@@ -179,7 +188,12 @@ describe("package distribution", () => {
 			const loader = {
 				getExtensions: () => ({
 					extensions: [
-						extension(resolve(repositoryRoot, "src/index.ts"), ["oracle_finder", "oracle_librarian"]),
+						extension(resolve(repositoryRoot, "src/index.ts"), [
+							"oracle_finder",
+							"oracle_librarian",
+							"session_search",
+							"session_read",
+						]),
 						extension(resolve(repositoryRoot, "node_modules/@tintinweb/pi-subagents/src/index.ts"), [
 							"Agent",
 							"get_subagent_result",
@@ -209,6 +223,8 @@ describe("package distribution", () => {
 				"ls",
 				"oracle_finder",
 				"oracle_librarian",
+				"session_search",
+				"session_read",
 				"web_search",
 				"fetch_content",
 				"get_search_content",
@@ -270,6 +286,8 @@ describe("package distribution", () => {
 				"Agent",
 				"oracle_finder",
 				"oracle_librarian",
+				"session_search",
+				"session_read",
 				"web_search",
 				"fetch_content",
 				"get_search_content",

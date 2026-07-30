@@ -14,14 +14,19 @@ import {
 
 const ACTIVE_MODEL_LABEL = "Use active session model (default)";
 
-export type CompactionModelChoice = { type: "active" } | { type: "model"; model: Model<Api> } | undefined;
+export type ModelChoice = { type: "active" } | { type: "model"; model: Model<Api> } | undefined;
+
+export interface ModelSelectorCopy {
+	title: string;
+	activeDescription: string;
+}
 
 interface SearchableChoice {
 	key: string;
 	label: string;
 	description: string;
 	searchText: string;
-	result: Exclude<CompactionModelChoice, undefined>;
+	result: Exclude<ModelChoice, undefined>;
 }
 
 function modelSearchText(model: Model<Api>): string {
@@ -29,17 +34,23 @@ function modelSearchText(model: Model<Api>): string {
 }
 
 /** Searchable model picker built from the same public Pi TUI primitives as Pi's model selector. */
-export class CompactionModelSelector extends Container implements Focusable {
+export class ModelSelector extends Container implements Focusable {
 	private readonly searchInput = new Input();
 	private readonly listContainer = new Container();
 	private readonly choices: SearchableChoice[];
 	private readonly tui: TUI;
 	private readonly theme: Theme;
-	private readonly done: (choice: CompactionModelChoice) => void;
+	private readonly done: (choice: ModelChoice) => void;
 	private selectList: SelectList | undefined;
 	private _focused = false;
 
-	constructor(tui: TUI, theme: Theme, models: Model<Api>[], done: (choice: CompactionModelChoice) => void) {
+	constructor(
+		tui: TUI,
+		theme: Theme,
+		models: Model<Api>[],
+		done: (choice: ModelChoice) => void,
+		copy: ModelSelectorCopy,
+	) {
 		super();
 		this.tui = tui;
 		this.theme = theme;
@@ -48,7 +59,7 @@ export class CompactionModelSelector extends Container implements Focusable {
 			{
 				key: "active",
 				label: ACTIVE_MODEL_LABEL,
-				description: "Follow the conversation model in each session",
+				description: copy.activeDescription,
 				searchText: "active session model default",
 				result: { type: "active" },
 			},
@@ -62,7 +73,7 @@ export class CompactionModelSelector extends Container implements Focusable {
 		];
 
 		this.addChild(new DynamicBorder((text) => theme.fg("accent", text)));
-		this.addChild(new Text(theme.fg("accent", theme.bold("Select Compaction Model"))));
+		this.addChild(new Text(theme.fg("accent", theme.bold(copy.title))));
 		this.addChild(new Text(theme.fg("muted", "Type to search by provider, model ID, or model name")));
 		this.addChild(new Spacer(1));
 		this.addChild(this.searchInput);

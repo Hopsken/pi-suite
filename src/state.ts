@@ -9,11 +9,14 @@ export const PI_SUITE_SETTINGS_KEY = "piSuite";
 
 const THINKING_LEVELS = ["off", "minimal", "low", "medium", "high", "xhigh", "max"] as const;
 
-export interface CompactionModelSelection {
+export interface ModelSelection {
 	provider: string;
 	modelId: string;
 	thinkingLevel: ModelThinkingLevel;
 }
+
+export type CompactionModelSelection = ModelSelection;
+export type SessionReadModelSelection = ModelSelection;
 
 type CompactionPreparation = SessionBeforeCompactEvent["preparation"];
 type SessionEntry = SessionBeforeCompactEvent["branchEntries"][number];
@@ -23,7 +26,7 @@ function isRecord(value: unknown): value is UnknownRecord {
 	return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-function isSelection(value: unknown): value is CompactionModelSelection {
+function isSelection(value: unknown): value is ModelSelection {
 	if (!isRecord(value)) return false;
 
 	return (
@@ -64,7 +67,10 @@ function acquireSettingsLock(settingsPath: string): () => void {
 	throw lastError;
 }
 
-export function loadCompactionModelSelection(settingsPath = getSettingsPath()): CompactionModelSelection | undefined {
+function loadModelSelection(
+	key: "compactionModel" | "sessionReadModel",
+	settingsPath: string,
+): ModelSelection | undefined {
 	if (!existsSync(settingsPath)) return undefined;
 
 	const release = acquireSettingsLock(settingsPath);
@@ -74,10 +80,10 @@ export function loadCompactionModelSelection(settingsPath = getSettingsPath()): 
 		if (suiteSettings === undefined) return undefined;
 		if (!isRecord(suiteSettings)) throw new Error(`${PI_SUITE_SETTINGS_KEY} in ${settingsPath} must be an object.`);
 
-		const selection = suiteSettings.compactionModel;
+		const selection = suiteSettings[key];
 		if (selection === undefined || selection === null) return undefined;
 		if (!isSelection(selection)) {
-			throw new Error(`${PI_SUITE_SETTINGS_KEY}.compactionModel in ${settingsPath} is invalid.`);
+			throw new Error(`${PI_SUITE_SETTINGS_KEY}.${key} in ${settingsPath} is invalid.`);
 		}
 		return selection;
 	} finally {
@@ -85,9 +91,10 @@ export function loadCompactionModelSelection(settingsPath = getSettingsPath()): 
 	}
 }
 
-export function saveCompactionModelSelection(
-	selection: CompactionModelSelection | undefined,
-	settingsPath = getSettingsPath(),
+function saveModelSelection(
+	key: "compactionModel" | "sessionReadModel",
+	selection: ModelSelection | undefined,
+	settingsPath: string,
 ): void {
 	mkdirSync(dirname(settingsPath), { recursive: true });
 
@@ -101,12 +108,34 @@ export function saveCompactionModelSelection(
 
 		settings[PI_SUITE_SETTINGS_KEY] = {
 			...(existingSuiteSettings ?? {}),
-			compactionModel: selection ?? null,
+			[key]: selection ?? null,
 		};
 		writeFileSync(settingsPath, JSON.stringify(settings, null, 2), "utf8");
 	} finally {
 		release();
 	}
+}
+
+export function loadCompactionModelSelection(settingsPath = getSettingsPath()): CompactionModelSelection | undefined {
+	return loadModelSelection("compactionModel", settingsPath);
+}
+
+export function saveCompactionModelSelection(
+	selection: CompactionModelSelection | undefined,
+	settingsPath = getSettingsPath(),
+): void {
+	saveModelSelection("compactionModel", selection, settingsPath);
+}
+
+export function loadSessionReadModelSelection(settingsPath = getSettingsPath()): SessionReadModelSelection | undefined {
+	return loadModelSelection("sessionReadModel", settingsPath);
+}
+
+export function saveSessionReadModelSelection(
+	selection: SessionReadModelSelection | undefined,
+	settingsPath = getSettingsPath(),
+): void {
+	saveModelSelection("sessionReadModel", selection, settingsPath);
 }
 
 export function includePreviousFileOperations(

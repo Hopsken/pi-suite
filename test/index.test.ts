@@ -4,7 +4,12 @@ import { join } from "node:path";
 import { fauxAssistantMessage } from "@earendil-works/pi-ai";
 import { type FauxProviderRegistration, registerFauxProvider } from "@earendil-works/pi-ai/compat";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
-import piSuite, { ORACLE_FINDER_TOOL_NAME, ORACLE_LIBRARIAN_TOOL_NAME } from "../src/index.ts";
+import piSuite, {
+	ORACLE_FINDER_TOOL_NAME,
+	ORACLE_LIBRARIAN_TOOL_NAME,
+	SESSION_READ_TOOL_NAME,
+	SESSION_SEARCH_TOOL_NAME,
+} from "../src/index.ts";
 
 type Handler = (event: any, context: any) => any;
 type ToolHandler = (...args: any[]) => any;
@@ -23,6 +28,7 @@ function createExtensionApi() {
 		registerTool(tool: { name: string; execute: ToolHandler }) {
 			tools.set(tool.name, tool);
 		},
+		getThinkingLevel: () => "off",
 		on(event: string, handler: Handler) {
 			const previous = handlers.get(event);
 			handlers.set(event, async (eventData: any, context: any) => {
@@ -145,8 +151,10 @@ describe("Pi Suite extension", () => {
 		);
 	});
 
-	test("registers Oracle research tools only inside the Oracle subagent session", async () => {
+	test("registers session tools globally and Oracle research tools only inside Oracle", async () => {
 		const mainSession = createExtensionApi();
+		expect(mainSession.tools.has(SESSION_SEARCH_TOOL_NAME)).toBe(true);
+		expect(mainSession.tools.has(SESSION_READ_TOOL_NAME)).toBe(true);
 		expect(mainSession.tools.has(ORACLE_FINDER_TOOL_NAME)).toBe(false);
 		expect(mainSession.tools.has(ORACLE_LIBRARIAN_TOOL_NAME)).toBe(false);
 
@@ -164,8 +172,19 @@ describe("Pi Suite extension", () => {
 		expect(mainSession.tools.has(ORACLE_LIBRARIAN_TOOL_NAME)).toBe(false);
 
 		const oracleSession = await createOracleExtensionApi();
+		expect(oracleSession.tools.has(SESSION_SEARCH_TOOL_NAME)).toBe(true);
+		expect(oracleSession.tools.has(SESSION_READ_TOOL_NAME)).toBe(true);
 		expect(oracleSession.tools.has(ORACLE_FINDER_TOOL_NAME)).toBe(true);
 		expect(oracleSession.tools.has(ORACLE_LIBRARIAN_TOOL_NAME)).toBe(true);
+
+		const searchResult = await mainSession.tools
+			.get(SESSION_SEARCH_TOOL_NAME)
+			?.execute("session-search-call", { query: "" }, undefined, undefined, {
+				cwd: "/project/current",
+				sessionManager: { getSessionId: () => "current-session", getSessionFile: () => undefined },
+			});
+		expect(searchResult?.content[0].text).toContain("all working directories");
+		expect(searchResult?.content[0].text).toContain("No historical sessions matched");
 	});
 
 	test("delegates Oracle research to a foreground Explore subagent and returns its result", async () => {
@@ -325,6 +344,60 @@ describe("Pi Suite extension", () => {
 			?.execute("tool-call-3", { prompt: "Trace the flow.", description: "Trace flow" }, undefined, undefined, {});
 
 		await expect(result).rejects.toThrow("model request failed");
+	});
+
+	test("persists the historical session reader model and thinking level", async () => {
+		fauxProvider = registerFauxProvider({
+			api: "pi-suite-reader-picker-test",
+			provider: "reader-provider",
+			models: [{ id: "reader-model", name: "Reader Model", reasoning: true }],
+		});
+		const model = fauxProvider.getModel();
+		const { commands } = createExtensionApi();
+		const notify = vi.fn();
+		await commands.get("session-read-model")?.handler("", {
+			mode: "tui",
+			ui: {
+				custom: vi.fn().mockResolvedValue({ type: "model", model }),
+				select: vi.fn().mockResolvedValue("low"),
+				notify,
+			},
+			modelRegistry: { getAvailable: () => [model] },
+		});
+
+		expect(JSON.parse(readFileSync(join(agentDirectory, "settings.json"), "utf8"))).toEqual({
+			piSuite: {
+				sessionReadModel: {
+					provider: "reader-provider",
+					modelId: "reader-model",
+					thinkingLevel: "low",
+				},
+			},
+		});
+		expect(notify).toHaveBeenCalledWith(
+			"Historical session reading will use reader-provider/reader-model with low thinking.",
+			"info",
+		);
+	});
+
+	test("keeps session reading fail-closed when its persisted model setting is invalid", async () => {
+		writeFileSync(
+			join(agentDirectory, "settings.json"),
+			JSON.stringify({ piSuite: { sessionReadModel: { provider: "reader-provider" } } }),
+			"utf8",
+		);
+		const { tools } = createExtensionApi();
+		const result = tools
+			.get(SESSION_READ_TOOL_NAME)
+			?.execute(
+				"session-read-call",
+				{ session_id: "historical", question: "What happened?" },
+				undefined,
+				undefined,
+				{},
+			);
+
+		await expect(result).rejects.toThrow("piSuite.sessionReadModel");
 	});
 
 	test("persists a selected model across sessions and uses it for real native compaction", async () => {
