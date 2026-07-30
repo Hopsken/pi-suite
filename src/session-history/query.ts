@@ -16,6 +16,7 @@ export type QueryFilterName =
 	| "before"
 	| "created_after"
 	| "created_before"
+	| "repo"
 	| "model"
 	| "tool"
 	| "file";
@@ -39,6 +40,7 @@ const names = new Set<QueryFilterName>([
 	"before",
 	"created_after",
 	"created_before",
+	"repo",
 	"model",
 	"tool",
 	"file",
@@ -107,7 +109,8 @@ export function parseSessionQuery(raw: string, now = new Date()): ParsedQuery {
 		raw,
 		clauses,
 		requiresContent: clauses.some(
-			(c) => c.kind !== "filter" || c.name === "model" || c.name === "tool" || c.name === "file",
+			(c) =>
+				c.kind !== "filter" || c.name === "repo" || c.name === "model" || c.name === "tool" || c.name === "file",
 		),
 	};
 }

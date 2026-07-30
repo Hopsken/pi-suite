@@ -2,6 +2,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, test } from "vitest";
+import { parseSessionQuery } from "../src/session-history/query.ts";
 import { createSessionToolHarness, searchContext, TEST_TIMESTAMP, writeSession } from "./session-history-fixtures.ts";
 
 describe("session_search query behavior", () => {
@@ -61,6 +62,15 @@ describe("session_search query behavior", () => {
 		expect(result.details.sessions.map((session) => session.sessionId)).toEqual(["query-session"]);
 		expect(result.content[0].text).toContain("query-session");
 		expect(result.content[0].text).toContain("/project/query with spaces");
+	});
+
+	test("accepts repository filters", async () => {
+		const parsed = parseSessionQuery("repo:. repo:hopsken/pi-suite");
+		expect(parsed.clauses.map((clause) => [clause.name, clause.value])).toEqual([
+			["repo", "."],
+			["repo", "hopsken/pi-suite"],
+		]);
+		expect(parsed.requiresContent).toBe(true);
 	});
 
 	test("searches for a colon inside a quoted phrase instead of treating it as a filter", async () => {

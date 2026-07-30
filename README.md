@@ -67,6 +67,9 @@ Pi Suite adds two tools for recovering evidence from earlier Pi sessions without
 
 Search covers sessions from **all historical working directories by default**. Every result includes its source cwd. Add
 `cwd:.` when the question must be restricted to the exact current directory. The executing session is always excluded.
+Add `repo:.` to include sessions recorded in any worktree of the current Git repository, or use `repo:owner/name` to match
+the credential-free canonical remote identity persisted in new sessions. Sessions created before this metadata was added do
+not match `repo:` filters unless they are resumed and annotated by Pi Suite.
 Search responses include `count` and `hasMore`; `hasMore` indicates that the caller can increase `limit` or narrow the query
 to retrieve additional matches.
 
@@ -74,12 +77,13 @@ Examples:
 
 ```text
 "refresh token" cwd:. after:30d
+"refresh token" repo:. after:30d
 "connection pool" tool:bash
 file:src/auth.ts model:openai-codex/gpt-5.6-terra
 id:019abc
 ```
 
-Bare terms, quoted phrases, and `id:`, `name:`, `cwd:`, date, `model:`, `tool:`, and `file:` filters compose with AND
+Bare terms, quoted phrases, and `id:`, `name:`, `cwd:`, `repo:`, date, `model:`, `tool:`, and `file:` filters compose with AND
 semantics. `file:` uses only structured paths from Pi's read, write, edit, and compaction records; it does not infer file
 access from shell commands or conversational mentions.
 
