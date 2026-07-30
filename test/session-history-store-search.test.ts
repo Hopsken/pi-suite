@@ -2,6 +2,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, test } from "vitest";
+import { searchHistoricalSessions } from "../src/session-history/search.ts";
 import {
 	createSessionToolHarness,
 	searchContext,
@@ -91,6 +92,76 @@ describe("platform-backed session history", () => {
 			searchContext("/project/one", "different-id", historyOnePath),
 		);
 		expect(excludedByPath.details.sessions.map((session) => session.sessionId)).toEqual(["history-two"]);
+	});
+
+	test("filters persisted repository identity across worktrees", async () => {
+		for (const [id, cwd, remote, commonGitDir] of [
+			["main-worktree", "/project/main", "github.com/hopsken/pi-suite", "/git/pi-suite"],
+			["feature-worktree", "/project/feature", "git@github.com:Hopsken/pi-suite.git", "/git/pi-suite"],
+			["other-repository", "/project/other", "github.com/other/repository", "/git/other"],
+		] as const)
+			writeSession(agentDirectory, {
+				id,
+				cwd,
+				entries: [
+					{
+						type: "custom",
+						id: `${id}-repo`,
+						parentId: null,
+						timestamp: TEST_TIMESTAMP,
+						customType: "pi-suite-repository",
+						data: { worktreeRoot: cwd, commonGitDir, remote },
+					},
+				],
+			});
+		writeSession(agentDirectory, {
+			id: "no-remote-worktree",
+			cwd: "/project/no-remote",
+			entries: [
+				{
+					type: "custom",
+					id: "no-remote-repo",
+					parentId: null,
+					timestamp: TEST_TIMESTAMP,
+					customType: "pi-suite-repository",
+					data: { worktreeRoot: "/project/no-remote", commonGitDir: "/git/pi-suite" },
+				},
+			],
+		});
+		writeSession(agentDirectory, {
+			id: "legacy-without-repository",
+			cwd: "/project/legacy",
+			entries: [userEntry("legacy-entry", null, "old evidence")],
+		});
+
+		const explicit = await createSessionToolHarness().search(
+			{ query: "repo:hopsken/pi-suite" },
+			searchContext("/project/unrelated"),
+		);
+		expect(explicit.details.sessions.map((session) => session.sessionId).sort()).toEqual([
+			"feature-worktree",
+			"main-worktree",
+		]);
+		expect(explicit.details.sessions.every((session) => session.repo === "github.com/hopsken/pi-suite")).toBe(true);
+
+		const current = await searchHistoricalSessions({
+			query: "repo:.",
+			invokingCwd: "/project/another-worktree",
+			invokingRepository: {
+				worktreeRoot: "/project/another-worktree",
+				commonGitDir: "/git/pi-suite",
+				remote: "github.com/hopsken/pi-suite",
+			},
+		});
+		expect(current.sessions.map((session) => session.sessionId).sort()).toEqual([
+			"feature-worktree",
+			"main-worktree",
+			"no-remote-worktree",
+		]);
+
+		await expect(
+			createSessionToolHarness().search({ query: "repo:." }, searchContext("/not/a/repository")),
+		).rejects.toThrow("identifiable Git repository");
 	});
 
 	test("skips malformed parent chains without adding diagnostics to valid results", async () => {

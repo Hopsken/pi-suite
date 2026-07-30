@@ -10,6 +10,7 @@ import piSuite, {
 	SESSION_READ_TOOL_NAME,
 	SESSION_SEARCH_TOOL_NAME,
 } from "../src/index.ts";
+import { normalizeRepositoryRemote, repositoryMatches } from "../src/session-history/repository.ts";
 
 type Handler = (event: any, context: any) => any;
 type ToolHandler = (...args: any[]) => any;
@@ -22,6 +23,8 @@ function createExtensionApi() {
 	const tools = new Map<string, { execute: ToolHandler }>();
 	const eventHandlers = new Map<string, Set<(data: unknown) => void>>();
 	const setSessionName = vi.fn();
+	const appendEntry = vi.fn();
+	const exec = vi.fn().mockResolvedValue({ stdout: "", stderr: "", code: 1, killed: false });
 	const pi = {
 		registerCommand(name: string, command: { handler: Handler }) {
 			commands.set(name, command);
@@ -37,7 +40,8 @@ function createExtensionApi() {
 				return handler(eventData, context);
 			});
 		},
-		appendEntry: vi.fn(),
+		appendEntry,
+		exec,
 		setSessionName,
 		getActiveTools: vi.fn(() => Array.from(tools.keys())),
 		getAllTools: vi.fn(() => Array.from(tools.keys(), (name) => ({ name }))),
@@ -56,7 +60,7 @@ function createExtensionApi() {
 	};
 
 	piSuite(pi as never);
-	return { commands, handlers, tools, events: pi.events, setSessionName };
+	return { commands, handlers, tools, events: pi.events, setSessionName, appendEntry, exec };
 }
 
 async function createOracleExtensionApi() {
@@ -91,6 +95,93 @@ describe("Pi Suite extension", () => {
 		if (originalAgentDirectory === undefined) delete process.env.PI_CODING_AGENT_DIR;
 		else process.env.PI_CODING_AGENT_DIR = originalAgentDirectory;
 		rmSync(agentDirectory, { recursive: true, force: true });
+	});
+
+	test("persists a canonical repository identity once per session branch", async () => {
+		const extension = createExtensionApi();
+		extension.exec
+			.mockResolvedValueOnce({
+				stdout: "/repo/worktree\n/repo/.git\n",
+				stderr: "",
+				code: 0,
+				killed: false,
+			})
+			.mockResolvedValueOnce({
+				stdout:
+					"remote.upstream.url git@github.com:other/project.git\nremote.origin.url https://user:secret@github.com/Hopsken/pi-suite.git\n",
+				stderr: "",
+				code: 0,
+				killed: false,
+			});
+		const context = {
+			cwd: "/repo/worktree",
+			mode: "print",
+			hasUI: false,
+			getSystemPrompt: () => "You are Pi's main coding agent.",
+			sessionManager: { getBranch: (): any[] => [] },
+			ui: { notify: vi.fn() },
+		};
+
+		await extension.handlers.get("session_start")?.({ reason: "new" }, context);
+
+		expect(extension.appendEntry).toHaveBeenCalledWith("pi-suite-repository", {
+			worktreeRoot: "/repo/worktree",
+			commonGitDir: "/repo/.git",
+			remote: "github.com/hopsken/pi-suite",
+		});
+		const calls = extension.exec.mock.calls.length;
+		extension.exec
+			.mockResolvedValueOnce({
+				stdout: "/repo/worktree\n/repo/.git\n",
+				stderr: "",
+				code: 0,
+				killed: false,
+			})
+			.mockResolvedValueOnce({
+				stdout: "remote.origin.url git@github.com:hopsken/pi-suite.git\n",
+				stderr: "",
+				code: 0,
+				killed: false,
+			});
+		await extension.handlers.get("session_tree")?.({}, context);
+		expect(extension.appendEntry).toHaveBeenCalledTimes(2);
+		expect(extension.exec).toHaveBeenCalledTimes(calls + 2);
+
+		context.sessionManager.getBranch = () => [
+			{
+				type: "custom",
+				customType: "pi-suite-repository",
+				data: { worktreeRoot: "/repo/worktree", commonGitDir: "/repo/.git" },
+			},
+		];
+		await extension.handlers.get("session_tree")?.({}, context);
+		expect(extension.exec).toHaveBeenCalledTimes(calls + 2);
+	});
+
+	test("canonicalizes supported repository remotes without retaining credentials or helper commands", () => {
+		const cases = [
+			["https://user:secret@GitHub.com/Hopsken/pi-suite.git", "github.com/hopsken/pi-suite"],
+			["git@github.com:Hopsken/pi-suite.git", "github.com/hopsken/pi-suite"],
+			["github.com:Hopsken/pi-suite.git", "github.com/hopsken/pi-suite"],
+			["ssh://git@example.com:2222/Owner/Repo.git", "example.com:2222/owner/repo"],
+			["file:///tmp/source.git", "/tmp/source"],
+			["ext::ssh -i /secret/key example %S repo", undefined],
+		] as const;
+		for (const [input, expected] of cases) {
+			const normalized = normalizeRepositoryRemote(input);
+			expect(normalized).toBe(expected);
+			if (normalized) expect(normalizeRepositoryRemote(normalized)).toBe(normalized);
+		}
+	});
+
+	test("requires an exact host when a repo filter is host-qualified", () => {
+		const repository = {
+			worktreeRoot: "/repo",
+			commonGitDir: "/repo/.git",
+			remote: "mirror.example/github.com/hopsken/pi-suite",
+		};
+		expect(repositoryMatches(repository, "hopsken/pi-suite", undefined)).toBe(true);
+		expect(repositoryMatches(repository, "github.com/hopsken/pi-suite", undefined)).toBe(false);
 	});
 
 	test("installs agent presets globally, preserves customization, and disables upstream defaults", async () => {

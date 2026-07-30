@@ -164,6 +164,8 @@ platform-specific path semantics. Values containing whitespace must be quoted.
 | `name:<value>` | Match a case-insensitive substring of the effective session name. |
 | `cwd:.` | Match the normalized current `ctx.cwd` exactly. |
 | `cwd:"<absolute-path>"` | Match a normalized persisted cwd exactly. |
+| `repo:.` | Match the current Git repository, including sessions from sibling worktrees. |
+| `repo:<owner/name>` | Match a persisted canonical Git remote identity. A host-qualified value is also accepted. |
 | `after:<date>` | Require session modified time after the value. |
 | `before:<date>` | Require session modified time before the value. |
 | `created_after:<date>` | Require header creation time after the value. |
@@ -475,7 +477,6 @@ Implementation should ship with:
 The following require separate evidence and design review:
 
 - a durable full-text index if measured global-search latency becomes unacceptable;
-- stable repository identity and `repo:` filters if Pi Suite records Git metadata independently;
 - opt-in abandoned-branch retrieval with a model-safe representation of branch status;
 - local-only or allowlisted-cwd privacy policies;
 - multi-session comparison and synthesis; and

@@ -27,7 +27,7 @@ interface ToolTextResult {
 
 interface SearchToolResult extends ToolTextResult {
 	details: {
-		sessions: Array<{ sessionId: string; cwd: string }>;
+		sessions: Array<{ sessionId: string; cwd: string; repo?: string }>;
 		count: number;
 		hasMore: boolean;
 	};

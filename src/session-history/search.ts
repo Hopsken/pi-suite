@@ -2,6 +2,7 @@ import { isAbsolute } from "node:path";
 import type { SessionInfo } from "@earendil-works/pi-coding-agent";
 import { type EvidenceUnit, normalizeActivePath } from "./normalize.ts";
 import { normalizeQueryPath, normalizeText, type ParsedQuery, parseSessionQuery, type QueryClause } from "./query.ts";
+import { type RepositoryMetadata, repositoryFromEntries, repositoryMatches } from "./repository.ts";
 import {
 	canonicalPath,
 	discoverHistoricalSessions,
@@ -23,6 +24,7 @@ export interface HistoricalSessionResult {
 	cwd: string;
 	createdAt: string;
 	modifiedAt: string;
+	repo?: string;
 	matchCount: number;
 	matchedEntries: SearchMatch[];
 }
@@ -39,11 +41,12 @@ export interface HistoricalSearchOptions {
 	currentSessionFile?: string;
 	signal?: AbortSignal;
 	now?: Date;
+	invokingRepository?: RepositoryMetadata;
 }
 
 function metadataMatches(info: SessionInfo, query: ParsedQuery, invokingCwd: string): boolean {
 	return query.clauses.every((clause) => {
-		if (clause.kind !== "filter" || ["model", "tool", "file"].includes(clause.name!)) return true;
+		if (clause.kind !== "filter" || ["repo", "model", "tool", "file"].includes(clause.name!)) return true;
 		switch (clause.name) {
 			case "id":
 				return normalizeText(info.id).startsWith(clause.value);
@@ -112,6 +115,10 @@ export async function searchHistoricalSessions(options: HistoricalSearchOptions)
 	if (!Number.isInteger(limit) || limit < 1 || limit > 50) throw new Error("limit must be an integer from 1 to 50.");
 	const query = parseSessionQuery(options.query, options.now);
 	const discovered = await discoverHistoricalSessions(options);
+	const repoClauses = query.clauses.filter((clause) => clause.kind === "filter" && clause.name === "repo");
+	const contentClauses = query.clauses.filter(
+		(c) => c.kind !== "filter" || ["model", "tool", "file"].includes(c.name!),
+	);
 	let hasMore = discovered.hasMore,
 		opened = 0;
 	const candidates = discovered.sessions.filter((info) => metadataMatches(info, query, options.invokingCwd));
@@ -119,6 +126,7 @@ export async function searchHistoricalSessions(options: HistoricalSearchOptions)
 	for (const info of candidates) {
 		options.signal?.throwIfAborted();
 		let units: EvidenceUnit[] = [];
+		let repository: RepositoryMetadata | undefined;
 		if (query.requiresContent) {
 			try {
 				const remainingBytes = MAX_TOTAL_OPENED_BYTES - opened;
@@ -128,17 +136,16 @@ export async function searchHistoricalSessions(options: HistoricalSearchOptions)
 				}
 				const loaded = await loadHistoricalSession(info, options.signal, remainingBytes);
 				opened += loaded.sizeBytes;
-				const normalized = normalizeActivePath(loaded.activePath, info.cwd, options.signal);
-				units = normalized.units;
+				repository = repositoryFromEntries(loaded.activePath);
+				if (contentClauses.length) units = normalizeActivePath(loaded.activePath, info.cwd, options.signal).units;
 			} catch (error) {
 				if (options.signal?.aborted) throw options.signal.reason ?? error;
 				if (error instanceof RemainingSessionReadBudgetError) hasMore = true;
 				continue;
 			}
 		}
-		const contentClauses = query.clauses.filter(
-			(c) => c.kind !== "filter" || ["model", "tool", "file"].includes(c.name!),
-		);
+		if (repoClauses.some((clause) => !repositoryMatches(repository, clause.value, options.invokingRepository)))
+			continue;
 		if (contentClauses.some((clause) => !units.some((unit) => unitMatches(unit, clause)))) continue;
 		const matched = units.filter((unit) => contentClauses.some((clause) => unitMatches(unit, clause)));
 		results.push({
@@ -147,6 +154,7 @@ export async function searchHistoricalSessions(options: HistoricalSearchOptions)
 			cwd: info.cwd || "(unknown)",
 			createdAt: info.created.toISOString(),
 			modifiedAt: info.modified.toISOString(),
+			repo: repository?.remote,
 			matchCount: matched.length,
 			matchedEntries: matched.slice(0, 3).map((u) => ({
 				entryId: u.entryId,
