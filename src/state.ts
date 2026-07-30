@@ -15,6 +15,7 @@ export interface ModelSelection {
 
 export type CompactionModelSelection = ModelSelection;
 export type SessionReadModelSelection = ModelSelection;
+export type SessionTitleModelSelection = ModelSelection;
 
 type CompactionPreparation = SessionBeforeCompactEvent["preparation"];
 type SessionEntry = SessionBeforeCompactEvent["branchEntries"][number];
@@ -66,7 +67,7 @@ function acquireConfigLock(configPath: string): () => void {
 }
 
 function loadModelSelection(
-	key: "compactionModel" | "sessionReadModel",
+	key: "compactionModel" | "sessionReadModel" | "sessionTitleModel",
 	configPath: string,
 ): ModelSelection | undefined {
 	if (!existsSync(configPath)) return undefined;
@@ -85,7 +86,7 @@ function loadModelSelection(
 }
 
 function saveModelSelection(
-	key: "compactionModel" | "sessionReadModel",
+	key: "compactionModel" | "sessionReadModel" | "sessionTitleModel",
 	selection: ModelSelection | undefined,
 	configPath: string,
 ): void {
@@ -121,6 +122,17 @@ export function saveSessionReadModelSelection(
 	configPath = getConfigPath(),
 ): void {
 	saveModelSelection("sessionReadModel", selection, configPath);
+}
+
+export function loadSessionTitleModelSelection(configPath = getConfigPath()): SessionTitleModelSelection | undefined {
+	return loadModelSelection("sessionTitleModel", configPath);
+}
+
+export function saveSessionTitleModelSelection(
+	selection: SessionTitleModelSelection | undefined,
+	configPath = getConfigPath(),
+): void {
+	saveModelSelection("sessionTitleModel", selection, configPath);
 }
 
 export function includePreviousFileOperations(

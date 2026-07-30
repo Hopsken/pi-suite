@@ -6,8 +6,10 @@ import {
 	includePreviousFileOperations,
 	loadCompactionModelSelection,
 	loadSessionReadModelSelection,
+	loadSessionTitleModelSelection,
 	saveCompactionModelSelection,
 	saveSessionReadModelSelection,
+	saveSessionTitleModelSelection,
 } from "../src/state.ts";
 
 describe("Pi Suite model config", () => {
@@ -22,18 +24,25 @@ describe("Pi Suite model config", () => {
 			modelId: "reader-test",
 			thinkingLevel: "low",
 		} as const;
+		const title = {
+			modelId: "title-test",
+			thinkingLevel: "off",
+		} as const;
 		writeFileSync(configPath, JSON.stringify({ anotherPreference: true }), "utf8");
 
 		try {
 			saveCompactionModelSelection(selected, configPath);
 			saveSessionReadModelSelection(reader, configPath);
+			saveSessionTitleModelSelection(title, configPath);
 
 			expect(loadCompactionModelSelection(configPath)).toEqual(selected);
 			expect(loadSessionReadModelSelection(configPath)).toEqual(reader);
+			expect(loadSessionTitleModelSelection(configPath)).toEqual(title);
 			expect(JSON.parse(readFileSync(configPath, "utf8"))).toEqual({
 				anotherPreference: true,
 				compactionModel: "gpt-test:high",
 				sessionReadModel: "reader-test:low",
+				sessionTitleModel: "title-test:off",
 			});
 
 			saveCompactionModelSelection(undefined, configPath);
@@ -42,6 +51,8 @@ describe("Pi Suite model config", () => {
 			expect(loadSessionReadModelSelection(configPath)).toEqual(reader);
 			saveSessionReadModelSelection(undefined, configPath);
 			expect(loadSessionReadModelSelection(configPath)).toBeUndefined();
+			saveSessionTitleModelSelection(undefined, configPath);
+			expect(loadSessionTitleModelSelection(configPath)).toBeUndefined();
 		} finally {
 			rmSync(directory, { recursive: true, force: true });
 		}

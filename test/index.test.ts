@@ -21,6 +21,7 @@ function createExtensionApi() {
 	const handlers = new Map<string, Handler>();
 	const tools = new Map<string, { execute: ToolHandler }>();
 	const eventHandlers = new Map<string, Set<(data: unknown) => void>>();
+	const setSessionName = vi.fn();
 	const pi = {
 		registerCommand(name: string, command: { handler: Handler }) {
 			commands.set(name, command);
@@ -37,6 +38,7 @@ function createExtensionApi() {
 			});
 		},
 		appendEntry: vi.fn(),
+		setSessionName,
 		getActiveTools: vi.fn(() => Array.from(tools.keys())),
 		getAllTools: vi.fn(() => Array.from(tools.keys(), (name) => ({ name }))),
 		setActiveTools: vi.fn(),
@@ -54,7 +56,7 @@ function createExtensionApi() {
 	};
 
 	piSuite(pi as never);
-	return { commands, handlers, tools, events: pi.events };
+	return { commands, handlers, tools, events: pi.events, setSessionName };
 }
 
 async function createOracleExtensionApi() {
@@ -380,6 +382,34 @@ describe("Pi Suite extension", () => {
 		);
 	});
 
+	test("persists the session title model and thinking level", async () => {
+		fauxProvider = registerFauxProvider({
+			api: "pi-suite-title-picker-test",
+			provider: "title-provider",
+			models: [{ id: "title-model", name: "Title Model", reasoning: true }],
+		});
+		const model = fauxProvider.getModel();
+		const { commands } = createExtensionApi();
+		const notify = vi.fn();
+		await commands.get("suite")?.handler("", {
+			mode: "tui",
+			ui: {
+				custom: vi.fn().mockResolvedValue({ type: "model", model }),
+				select: vi.fn().mockResolvedValueOnce("Session title model").mockResolvedValueOnce("minimal"),
+				notify,
+			},
+			modelRegistry: { getAvailable: () => [model] },
+		});
+
+		expect(JSON.parse(readFileSync(join(agentDirectory, "pi-suite.json"), "utf8"))).toEqual({
+			sessionTitleModel: "title-model:minimal",
+		});
+		expect(notify).toHaveBeenCalledWith(
+			"Session titles will use title-provider/title-model with minimal thinking.",
+			"info",
+		);
+	});
+
 	test("returns to the Suite menu when the compaction model picker is cancelled", async () => {
 		const { commands } = createExtensionApi();
 		const select = vi.fn().mockResolvedValueOnce("Compaction model").mockResolvedValueOnce(undefined);
@@ -397,13 +427,72 @@ describe("Pi Suite extension", () => {
 		expect(select).toHaveBeenNthCalledWith(1, "Pi Suite Configuration", [
 			"Compaction model",
 			"Session reader model",
+			"Session title model",
 			"Setup agents",
 		]);
 		expect(select).toHaveBeenNthCalledWith(2, "Pi Suite Configuration", [
 			"Compaction model",
 			"Session reader model",
+			"Session title model",
 			"Setup agents",
 		]);
+	});
+
+	test("generates a title only after the first agent end", async () => {
+		fauxProvider = registerFauxProvider({
+			api: "pi-suite-title-test",
+			provider: "title-provider",
+			models: [{ id: "title-model", name: "Title Model", reasoning: true }],
+		});
+		const model = fauxProvider.getModel();
+		const prompts: string[] = [];
+		fauxProvider.setResponses([
+			(context) => {
+				prompts.push(String(context.messages[0]?.content));
+				return fauxAssistantMessage('"Initial authentication plan"');
+			},
+		]);
+		const branch: any[] = [
+			{
+				type: "message",
+				message: { role: "user", content: [{ type: "text", text: "Design authentication" }] },
+			},
+			{
+				type: "message",
+				message: { role: "assistant", content: [{ type: "text", text: "Use passkeys" }] },
+			},
+		];
+		const extension = createExtensionApi();
+		const context = {
+			mode: "tui",
+			hasUI: true,
+			model,
+			modelRegistry: {
+				getAvailable: () => [model],
+				getApiKeyAndHeaders: async () => ({ ok: true, apiKey: "faux-key" }),
+			},
+			sessionManager: { getBranch: () => branch },
+			ui: { notify: vi.fn() },
+		};
+
+		await extension.handlers.get("agent_end")?.({ messages: [] }, context);
+		expect(extension.setSessionName).toHaveBeenLastCalledWith("Initial authentication plan");
+
+		branch.push(
+			{
+				type: "message",
+				message: { role: "user", content: [{ type: "text", text: "Now plan the deployment rollout" }] },
+			},
+			{
+				type: "message",
+				message: { role: "assistant", content: [{ type: "text", text: "Use staged deployment" }] },
+			},
+		);
+		await extension.handlers.get("agent_end")?.({ messages: [] }, context);
+
+		expect(extension.setSessionName).toHaveBeenCalledTimes(1);
+		expect(extension.setSessionName).toHaveBeenLastCalledWith("Initial authentication plan");
+		expect(prompts).toHaveLength(1);
 	});
 
 	test("keeps session reading fail-closed when its persisted model setting is invalid", async () => {

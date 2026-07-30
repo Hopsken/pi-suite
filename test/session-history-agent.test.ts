@@ -128,6 +128,7 @@ describe("session history through the Pi agent loop", () => {
 						: "I could not find the prior queue decision.",
 				);
 			},
+			fauxAssistantMessage("Durable queue retry decision"),
 		]);
 		session = await createHistoryAgent("/project/current");
 
@@ -137,6 +138,7 @@ describe("session history through the Pi agent loop", () => {
 		expect(observedToolResult).toContain("durable queue");
 		expect(session.messages.map((message) => message.role)).toEqual(["user", "assistant", "toolResult", "assistant"]);
 		expect(lastAssistantText(session)).toBe("I found the prior queue decision.");
+		expect(session.sessionName).toBe("Durable queue retry decision");
 		expect(faux.getPendingResponseCount()).toBe(0);
 	});
 
@@ -173,6 +175,7 @@ describe("session history through the Pi agent loop", () => {
 						: "The prior session did not explain retry durability.",
 				);
 			},
+			fauxAssistantMessage("Durable retries from persisted jobs"),
 		]);
 		session = await createHistoryAgent("/project/current");
 
@@ -183,7 +186,8 @@ describe("session history through the Pi agent loop", () => {
 		expect(observedToolResult).toContain("session:read-agent-session#read-evidence");
 		expect(session.messages.map((message) => message.role)).toEqual(["user", "assistant", "toolResult", "assistant"]);
 		expect(lastAssistantText(session)).toBe("The prior session says persistence makes retries durable.");
-		expect(faux.state.callCount).toBe(3);
+		expect(session.sessionName).toBe("Durable retries from persisted jobs");
+		expect(faux.state.callCount).toBe(4);
 		expect(faux.getPendingResponseCount()).toBe(0);
 	});
 });

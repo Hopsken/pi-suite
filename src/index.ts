@@ -6,14 +6,18 @@ import { installAgentPresets } from "./agent-presets.ts";
 import { registerAvailableCliToolsPrompt } from "./available-cli-tools.ts";
 import { type ModelChoice, ModelSelector } from "./model-selector.ts";
 import { registerSessionHistoryTools } from "./session-history-tools.ts";
+import { generateSessionTitle } from "./session-title.ts";
 import {
 	type CompactionModelSelection,
 	includePreviousFileOperations,
 	loadCompactionModelSelection,
 	loadSessionReadModelSelection,
+	loadSessionTitleModelSelection,
 	type SessionReadModelSelection,
+	type SessionTitleModelSelection,
 	saveCompactionModelSelection,
 	saveSessionReadModelSelection,
+	saveSessionTitleModelSelection,
 } from "./state.ts";
 import { registerToolsSelector } from "./tools-selector.ts";
 
@@ -269,6 +273,8 @@ function warnUnavailable(ctx: ExtensionContext, message: string): void {
 export default function piSuite(pi: ExtensionAPI): void {
 	let selection: CompactionModelSelection | undefined;
 	let sessionReadSelection: SessionReadModelSelection | undefined;
+	let sessionTitleSelection: SessionTitleModelSelection | undefined;
+	let attemptedSessionTitle = false;
 	let sessionReadSelectionError: string | undefined;
 	let completedCustomCompaction:
 		| {
@@ -287,6 +293,11 @@ export default function piSuite(pi: ExtensionAPI): void {
 	} catch (error) {
 		sessionReadSelection = undefined;
 		sessionReadSelectionError = error instanceof Error ? error.message : String(error);
+	}
+	try {
+		sessionTitleSelection = loadSessionTitleModelSelection();
+	} catch {
+		sessionTitleSelection = undefined;
 	}
 
 	registerSessionHistoryTools(pi, () => {
@@ -314,10 +325,20 @@ export default function piSuite(pi: ExtensionAPI): void {
 				`Could not load the session reader model setting: ${sessionReadSelectionError}. session_read is unavailable until the setting is fixed or reset.`,
 			);
 		}
+		try {
+			sessionTitleSelection = loadSessionTitleModelSelection();
+		} catch (error) {
+			sessionTitleSelection = undefined;
+			const reason = error instanceof Error ? error.message : String(error);
+			warn(ctx, `Could not load the session title model setting: ${reason}`);
+		}
 	};
 
 	pi.on("session_start", (_event, ctx) => {
 		completedCustomCompaction = undefined;
+		attemptedSessionTitle = ctx.sessionManager
+			.getBranch()
+			.some((entry) => entry.type === "message" && entry.message.role === "assistant");
 		if (ctx.getSystemPrompt().startsWith(ORACLE_ACTIVE_AGENT_TAG)) {
 			registerOracleFinderTool(pi);
 			registerOracleLibrarianTool(pi);
@@ -342,6 +363,16 @@ export default function piSuite(pi: ExtensionAPI): void {
 		} else {
 			const activeModel = ctx.model ? `${ctx.model.provider}/${ctx.model.id}` : "not selected";
 			ctx.ui.notify(`Session reader model: ${activeModel} (active session model).`, "info");
+		}
+
+		if (sessionTitleSelection) {
+			ctx.ui.notify(
+				`Session title model: ${sessionTitleSelection.modelId} (${sessionTitleSelection.thinkingLevel} thinking).`,
+				"info",
+			);
+		} else {
+			const activeModel = ctx.model ? `${ctx.model.provider}/${ctx.model.id}` : "not selected";
+			ctx.ui.notify(`Session title model: ${activeModel} (active session model).`, "info");
 		}
 	});
 
@@ -467,6 +498,52 @@ export default function piSuite(pi: ExtensionAPI): void {
 		return true;
 	};
 
+	const configureSessionTitleModel = async (ctx: ExtensionContext): Promise<boolean> => {
+		const models = [...ctx.modelRegistry.getAvailable()].sort((left, right) => {
+			const leftSelected = left.id === sessionTitleSelection?.modelId;
+			const rightSelected = right.id === sessionTitleSelection?.modelId;
+			if (leftSelected !== rightSelected) return leftSelected ? -1 : 1;
+			return modelLabel(left).localeCompare(modelLabel(right));
+		});
+		const choice = await ctx.ui.custom<ModelChoice>(
+			(tui, theme, _keybindings, done) =>
+				new ModelSelector(tui, theme, models, done, {
+					title: "Select Session Title Model",
+					activeDescription: "Use each session's active model",
+					currentModelId: sessionTitleSelection?.modelId,
+				}),
+		);
+		if (!choice) return false;
+		if (choice.type === "active") {
+			try {
+				saveSessionTitleModelSelection(undefined);
+			} catch (error) {
+				ctx.ui.notify(`Could not save the session title model setting: ${errorMessage(error)}`, "error");
+				return true;
+			}
+			sessionTitleSelection = undefined;
+			ctx.ui.notify("Session titles will use the active session model.", "info");
+			return true;
+		}
+		const supportedLevels = getSupportedThinkingLevels(choice.model);
+		const chosenLevel = await ctx.ui.select("Session title thinking level", supportedLevels);
+		const thinkingLevel = supportedLevels.find((level) => level === chosenLevel);
+		if (!thinkingLevel) return false;
+		const nextSelection: SessionTitleModelSelection = { modelId: choice.model.id, thinkingLevel };
+		try {
+			saveSessionTitleModelSelection(nextSelection);
+		} catch (error) {
+			ctx.ui.notify(`Could not save the session title model setting: ${errorMessage(error)}`, "error");
+			return true;
+		}
+		sessionTitleSelection = nextSelection;
+		ctx.ui.notify(
+			`Session titles will use ${choice.model.provider}/${choice.model.id} with ${thinkingLevel} thinking.`,
+			"info",
+		);
+		return true;
+	};
+
 	const setupAgents = async (ctx: ExtensionContext): Promise<void> => {
 		try {
 			const result = installAgentPresets();
@@ -500,6 +577,7 @@ export default function piSuite(pi: ExtensionAPI): void {
 				const item = await ctx.ui.select("Pi Suite Configuration", [
 					"Compaction model",
 					"Session reader model",
+					"Session title model",
 					"Setup agents",
 				]);
 				if (!item) return;
@@ -509,10 +587,25 @@ export default function piSuite(pi: ExtensionAPI): void {
 				}
 
 				const completed =
-					item === "Compaction model" ? await configureCompactionModel(ctx) : await configureSessionReadModel(ctx);
+					item === "Compaction model"
+						? await configureCompactionModel(ctx)
+						: item === "Session reader model"
+							? await configureSessionReadModel(ctx)
+							: await configureSessionTitleModel(ctx);
 				if (completed) return;
 			}
 		},
+	});
+
+	pi.on("agent_end", async (_event, ctx) => {
+		if (attemptedSessionTitle) return;
+		attemptedSessionTitle = true;
+		try {
+			const title = await generateSessionTitle(ctx, sessionTitleSelection, pi.getThinkingLevel());
+			if (title) pi.setSessionName(title);
+		} catch (error) {
+			warnUnavailable(ctx, `Could not generate the session title: ${errorMessage(error)}`);
+		}
 	});
 
 	pi.on("session_before_compact", async (event, ctx) => {
@@ -585,8 +678,11 @@ export {
 	includePreviousFileOperations,
 	loadCompactionModelSelection,
 	loadSessionReadModelSelection,
+	loadSessionTitleModelSelection,
 	PI_SUITE_CONFIG_FILE,
 	type SessionReadModelSelection,
+	type SessionTitleModelSelection,
 	saveCompactionModelSelection,
 	saveSessionReadModelSelection,
+	saveSessionTitleModelSelection,
 } from "./state.ts";

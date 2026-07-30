@@ -49,6 +49,15 @@ names. The thinking-level picker is limited to levels supported by the selected 
 > Pi currently authenticates the active conversation model before running compaction hooks. The active model therefore
 > still needs valid authentication even when a dedicated compaction model is selected.
 
+#### Automatic session titles
+
+Pi Suite generates a concise session title after the first completed turn. Later turns do not trigger more title requests.
+The active session model and thinking level are used by default.
+
+Use the **Session title model** item in `/suite` to choose a dedicated model and supported thinking level without changing
+the conversation model. The selection is stored in `~/.pi/agent/pi-suite.json` as `sessionTitleModel` in
+`<model-id>:<thinking>` format. Choose **Use active session model (default)** to reset it.
+
 #### Historical session search and read
 
 Pi Suite adds two tools for recovering evidence from earlier Pi sessions without injecting history automatically:
