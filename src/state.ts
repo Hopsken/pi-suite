@@ -4,13 +4,11 @@ import type { ModelThinkingLevel } from "@earendil-works/pi-ai";
 import { getAgentDir, type SessionBeforeCompactEvent } from "@earendil-works/pi-coding-agent";
 import lockfile from "proper-lockfile";
 
-/** Namespace used for Pi Suite preferences in Pi's global settings.json. */
-export const PI_SUITE_SETTINGS_KEY = "piSuite";
+export const PI_SUITE_CONFIG_FILE = "pi-suite.json";
 
 const THINKING_LEVELS = ["off", "minimal", "low", "medium", "high", "xhigh", "max"] as const;
 
 export interface ModelSelection {
-	provider: string;
 	modelId: string;
 	thinkingLevel: ModelThinkingLevel;
 }
@@ -26,41 +24,41 @@ function isRecord(value: unknown): value is UnknownRecord {
 	return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-function isSelection(value: unknown): value is ModelSelection {
-	if (!isRecord(value)) return false;
-
-	return (
-		typeof value.provider === "string" &&
-		value.provider.length > 0 &&
-		typeof value.modelId === "string" &&
-		value.modelId.length > 0 &&
-		typeof value.thinkingLevel === "string" &&
-		(THINKING_LEVELS as readonly string[]).includes(value.thinkingLevel)
-	);
+function parseSelection(value: unknown): ModelSelection | undefined {
+	if (typeof value !== "string") return undefined;
+	const separator = value.lastIndexOf(":");
+	const modelId = value.slice(0, separator);
+	const thinkingLevel = value.slice(separator + 1);
+	if (!modelId || !(THINKING_LEVELS as readonly string[]).includes(thinkingLevel)) return undefined;
+	return { modelId, thinkingLevel: thinkingLevel as ModelThinkingLevel };
 }
 
-function parseSettings(content: string, settingsPath: string): UnknownRecord {
-	const settings: unknown = JSON.parse(content);
-	if (!isRecord(settings)) throw new Error(`Pi settings at ${settingsPath} must contain a JSON object.`);
-	return settings;
+function formatSelection(selection: ModelSelection): string {
+	return `${selection.modelId}:${selection.thinkingLevel}`;
 }
 
-function getSettingsPath(): string {
-	return join(getAgentDir(), "settings.json");
+function parseConfig(content: string, configPath: string): UnknownRecord {
+	const config: unknown = JSON.parse(content);
+	if (!isRecord(config)) throw new Error(`Pi Suite config at ${configPath} must contain a JSON object.`);
+	return config;
 }
 
-function acquireSettingsLock(settingsPath: string): () => void {
+function getConfigPath(): string {
+	return join(getAgentDir(), PI_SUITE_CONFIG_FILE);
+}
+
+function acquireConfigLock(configPath: string): () => void {
 	let lastError: unknown;
 	for (let attempt = 0; attempt < 10; attempt++) {
 		try {
-			return lockfile.lockSync(settingsPath, { realpath: false });
+			return lockfile.lockSync(configPath, { realpath: false });
 		} catch (error) {
 			const code = isRecord(error) && typeof error.code === "string" ? error.code : undefined;
 			if (code !== "ELOCKED" || attempt === 9) throw error;
 			lastError = error;
 			const waitUntil = Date.now() + 20;
 			while (Date.now() < waitUntil) {
-				// Pi's settings writes are synchronous and short; briefly wait for its shared lock.
+				// Pi Suite config writes are synchronous and short; briefly wait for its shared lock.
 			}
 		}
 	}
@@ -69,23 +67,18 @@ function acquireSettingsLock(settingsPath: string): () => void {
 
 function loadModelSelection(
 	key: "compactionModel" | "sessionReadModel",
-	settingsPath: string,
+	configPath: string,
 ): ModelSelection | undefined {
-	if (!existsSync(settingsPath)) return undefined;
+	if (!existsSync(configPath)) return undefined;
 
-	const release = acquireSettingsLock(settingsPath);
+	const release = acquireConfigLock(configPath);
 	try {
-		const settings = parseSettings(readFileSync(settingsPath, "utf8"), settingsPath);
-		const suiteSettings = settings[PI_SUITE_SETTINGS_KEY];
-		if (suiteSettings === undefined) return undefined;
-		if (!isRecord(suiteSettings)) throw new Error(`${PI_SUITE_SETTINGS_KEY} in ${settingsPath} must be an object.`);
-
-		const selection = suiteSettings[key];
+		const config = parseConfig(readFileSync(configPath, "utf8"), configPath);
+		const selection = config[key];
 		if (selection === undefined || selection === null) return undefined;
-		if (!isSelection(selection)) {
-			throw new Error(`${PI_SUITE_SETTINGS_KEY}.${key} in ${settingsPath} is invalid.`);
-		}
-		return selection;
+		const parsed = parseSelection(selection);
+		if (!parsed) throw new Error(`${key} in ${configPath} is invalid.`);
+		return parsed;
 	} finally {
 		release();
 	}
@@ -94,48 +87,40 @@ function loadModelSelection(
 function saveModelSelection(
 	key: "compactionModel" | "sessionReadModel",
 	selection: ModelSelection | undefined,
-	settingsPath: string,
+	configPath: string,
 ): void {
-	mkdirSync(dirname(settingsPath), { recursive: true });
+	mkdirSync(dirname(configPath), { recursive: true });
 
-	const release = acquireSettingsLock(settingsPath);
+	const release = acquireConfigLock(configPath);
 	try {
-		const settings = existsSync(settingsPath) ? parseSettings(readFileSync(settingsPath, "utf8"), settingsPath) : {};
-		const existingSuiteSettings = settings[PI_SUITE_SETTINGS_KEY];
-		if (existingSuiteSettings !== undefined && !isRecord(existingSuiteSettings)) {
-			throw new Error(`${PI_SUITE_SETTINGS_KEY} in ${settingsPath} must be an object.`);
-		}
-
-		settings[PI_SUITE_SETTINGS_KEY] = {
-			...(existingSuiteSettings ?? {}),
-			[key]: selection ?? null,
-		};
-		writeFileSync(settingsPath, JSON.stringify(settings, null, 2), "utf8");
+		const config = existsSync(configPath) ? parseConfig(readFileSync(configPath, "utf8"), configPath) : {};
+		config[key] = selection ? formatSelection(selection) : null;
+		writeFileSync(configPath, `${JSON.stringify(config, null, 2)}\n`, "utf8");
 	} finally {
 		release();
 	}
 }
 
-export function loadCompactionModelSelection(settingsPath = getSettingsPath()): CompactionModelSelection | undefined {
-	return loadModelSelection("compactionModel", settingsPath);
+export function loadCompactionModelSelection(configPath = getConfigPath()): CompactionModelSelection | undefined {
+	return loadModelSelection("compactionModel", configPath);
 }
 
 export function saveCompactionModelSelection(
 	selection: CompactionModelSelection | undefined,
-	settingsPath = getSettingsPath(),
+	configPath = getConfigPath(),
 ): void {
-	saveModelSelection("compactionModel", selection, settingsPath);
+	saveModelSelection("compactionModel", selection, configPath);
 }
 
-export function loadSessionReadModelSelection(settingsPath = getSettingsPath()): SessionReadModelSelection | undefined {
-	return loadModelSelection("sessionReadModel", settingsPath);
+export function loadSessionReadModelSelection(configPath = getConfigPath()): SessionReadModelSelection | undefined {
+	return loadModelSelection("sessionReadModel", configPath);
 }
 
 export function saveSessionReadModelSelection(
 	selection: SessionReadModelSelection | undefined,
-	settingsPath = getSettingsPath(),
+	configPath = getConfigPath(),
 ): void {
-	saveModelSelection("sessionReadModel", selection, settingsPath);
+	saveModelSelection("sessionReadModel", selection, configPath);
 }
 
 export function includePreviousFileOperations(

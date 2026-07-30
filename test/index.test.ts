@@ -96,7 +96,10 @@ describe("Pi Suite extension", () => {
 		const { commands } = createExtensionApi();
 		const notify = vi.fn();
 
-		await commands.get("setup-agents")?.handler("", { ui: { notify } });
+		await commands.get("suite")?.handler("", {
+			mode: "tui",
+			ui: { notify, select: vi.fn().mockResolvedValue("Setup agents") },
+		});
 
 		const explorePath = join(agentDirectory, "agents", "Explore.md");
 		const explorePreset = readFileSync(explorePath, "utf8");
@@ -140,7 +143,10 @@ describe("Pi Suite extension", () => {
 		writeFileSync(librarianPath, customizedLibrarian, "utf8");
 		writeFileSync(oraclePath, customizedOracle, "utf8");
 		notify.mockClear();
-		await commands.get("setup-agents")?.handler("", { ui: { notify } });
+		await commands.get("suite")?.handler("", {
+			mode: "tui",
+			ui: { notify, select: vi.fn().mockResolvedValue("Setup agents") },
+		});
 
 		expect(readFileSync(explorePath, "utf8")).toBe(customizedExplore);
 		expect(readFileSync(librarianPath, "utf8")).toBe(customizedLibrarian);
@@ -355,24 +361,18 @@ describe("Pi Suite extension", () => {
 		const model = fauxProvider.getModel();
 		const { commands } = createExtensionApi();
 		const notify = vi.fn();
-		await commands.get("session-read-model")?.handler("", {
+		await commands.get("suite")?.handler("", {
 			mode: "tui",
 			ui: {
 				custom: vi.fn().mockResolvedValue({ type: "model", model }),
-				select: vi.fn().mockResolvedValue("low"),
+				select: vi.fn().mockResolvedValueOnce("Session reader model").mockResolvedValueOnce("low"),
 				notify,
 			},
 			modelRegistry: { getAvailable: () => [model] },
 		});
 
-		expect(JSON.parse(readFileSync(join(agentDirectory, "settings.json"), "utf8"))).toEqual({
-			piSuite: {
-				sessionReadModel: {
-					provider: "reader-provider",
-					modelId: "reader-model",
-					thinkingLevel: "low",
-				},
-			},
+		expect(JSON.parse(readFileSync(join(agentDirectory, "pi-suite.json"), "utf8"))).toEqual({
+			sessionReadModel: "reader-model:low",
 		});
 		expect(notify).toHaveBeenCalledWith(
 			"Historical session reading will use reader-provider/reader-model with low thinking.",
@@ -382,8 +382,8 @@ describe("Pi Suite extension", () => {
 
 	test("keeps session reading fail-closed when its persisted model setting is invalid", async () => {
 		writeFileSync(
-			join(agentDirectory, "settings.json"),
-			JSON.stringify({ piSuite: { sessionReadModel: { provider: "reader-provider" } } }),
+			join(agentDirectory, "pi-suite.json"),
+			JSON.stringify({ sessionReadModel: "reader-model:unsupported" }),
 			"utf8",
 		);
 		const { tools } = createExtensionApi();
@@ -397,7 +397,7 @@ describe("Pi Suite extension", () => {
 				{},
 			);
 
-		await expect(result).rejects.toThrow("piSuite.sessionReadModel");
+		await expect(result).rejects.toThrow("sessionReadModel");
 	});
 
 	test("persists a selected model across sessions and uses it for real native compaction", async () => {
@@ -442,7 +442,7 @@ describe("Pi Suite extension", () => {
 			getSystemPrompt: () => "You are Pi's main coding agent.",
 			ui: {
 				custom: vi.fn().mockResolvedValue({ type: "model", model }),
-				select: vi.fn().mockResolvedValue("high"),
+				select: vi.fn().mockResolvedValueOnce("Compaction model").mockResolvedValueOnce("high"),
 				notify,
 			},
 			modelRegistry: {
@@ -454,24 +454,18 @@ describe("Pi Suite extension", () => {
 			sessionManager: { getBranch: () => [] },
 		};
 
-		await firstSession.commands.get("compaction-model")?.handler("", context);
+		await firstSession.commands.get("suite")?.handler("", context);
 
-		expect(JSON.parse(readFileSync(settingsPath, "utf8"))).toEqual({
-			theme: "dark",
-			piSuite: {
-				compactionModel: {
-					provider: "test-provider",
-					modelId: "summary-model",
-					thinkingLevel: "high",
-				},
-			},
+		expect(JSON.parse(readFileSync(join(agentDirectory, "pi-suite.json"), "utf8"))).toEqual({
+			compactionModel: "summary-model:high",
 		});
+		expect(JSON.parse(readFileSync(settingsPath, "utf8"))).toEqual({ theme: "dark" });
 
 		const nextSession = createExtensionApi();
 		for (const reason of ["startup", "reload", "resume"]) {
 			notify.mockClear();
 			await nextSession.handlers.get("session_start")?.({ reason }, context);
-			expect(notify).toHaveBeenCalledWith("Compaction model: test-provider/summary-model (high thinking).", "info");
+			expect(notify).toHaveBeenCalledWith("Compaction model: summary-model (high thinking).", "info");
 		}
 
 		const signal = new AbortController().signal;

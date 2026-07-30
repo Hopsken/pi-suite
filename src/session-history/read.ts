@@ -14,7 +14,6 @@ const MAX_CALLS = 32;
 const MAX_MAP_CHUNKS = 16;
 
 export interface SessionReaderModelSelection {
-	provider: string;
 	modelId: string;
 	thinkingLevel: ModelThinkingLevel;
 }
@@ -121,8 +120,8 @@ export async function readHistoricalSession(
 	let model: Model<Api> | undefined;
 	let configuredThinking: ModelThinkingLevel;
 	if (input.model) {
-		model = ctx.modelRegistry.find(input.model.provider, input.model.modelId);
-		if (!model) throw new Error(`Configured reader model not found: ${input.model.provider}/${input.model.modelId}`);
+		model = ctx.modelRegistry.getAvailable().find((candidate) => candidate.id === input.model?.modelId);
+		if (!model) throw new Error(`Configured reader model not found: ${input.model.modelId}`);
 		configuredThinking = input.model.thinkingLevel;
 	} else {
 		model = ctx.model;

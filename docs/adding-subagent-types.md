@@ -188,12 +188,12 @@ Do not add the Markdown file to this repository and assume Pi will discover it f
 manifests support extensions, skills, prompts, and themes, but not subagent definitions; `pi-subagents` scans only the three
 directories above.
 
-Pi Suite handles delivery through `/setup-agents`, which copies every Markdown file under `presets/agents/` to
+Pi Suite handles delivery through **Setup agents** in `/suite`, which copies every Markdown file under `presets/agents/` to
 `getAgentDir()/agents`. To add a type:
 
 1. Add `presets/agents/<name>.md` using the format above.
 2. Add the filename to the expected preset list in `test/distribution.test.ts`.
-3. Extend the `/setup-agents` test in `test/index.test.ts` to verify installation and collision behavior.
+3. Extend the `/suite` setup-agents test in `test/index.test.ts` to verify installation and collision behavior.
 4. Add the type and its intended use to the README.
 5. Run `pnpm check` and `pnpm build`.
 6. Inspect `pnpm pack --dry-run --json` to confirm the definition is present in the published artifact.

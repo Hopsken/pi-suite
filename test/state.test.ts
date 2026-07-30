@@ -1,7 +1,6 @@
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { SettingsManager } from "@earendil-works/pi-coding-agent";
 import { describe, expect, test } from "vitest";
 import {
 	includePreviousFileOperations,
@@ -11,46 +10,38 @@ import {
 	saveSessionReadModelSelection,
 } from "../src/state.ts";
 
-describe("compaction model settings", () => {
-	test("stores the selection without replacing unrelated or subsequently updated Pi settings", async () => {
+describe("Pi Suite model config", () => {
+	test("stores compact model values without provider names and preserves other Suite config", () => {
 		const directory = mkdtempSync(join(tmpdir(), "pi-suite-settings-"));
-		const settingsPath = join(directory, "settings.json");
+		const configPath = join(directory, "pi-suite.json");
 		const selected = {
-			provider: "openai",
 			modelId: "gpt-test",
 			thinkingLevel: "high",
 		} as const;
 		const reader = {
-			provider: "anthropic",
 			modelId: "reader-test",
 			thinkingLevel: "low",
 		} as const;
-		writeFileSync(settingsPath, JSON.stringify({ theme: "dark", piSuite: { anotherPreference: true } }), "utf8");
+		writeFileSync(configPath, JSON.stringify({ anotherPreference: true }), "utf8");
 
 		try {
-			saveCompactionModelSelection(selected, settingsPath);
-			saveSessionReadModelSelection(reader, settingsPath);
+			saveCompactionModelSelection(selected, configPath);
+			saveSessionReadModelSelection(reader, configPath);
 
-			expect(loadCompactionModelSelection(settingsPath)).toEqual(selected);
-			expect(loadSessionReadModelSelection(settingsPath)).toEqual(reader);
-			expect(JSON.parse(readFileSync(settingsPath, "utf8"))).toEqual({
-				theme: "dark",
-				piSuite: { anotherPreference: true, compactionModel: selected, sessionReadModel: reader },
+			expect(loadCompactionModelSelection(configPath)).toEqual(selected);
+			expect(loadSessionReadModelSelection(configPath)).toEqual(reader);
+			expect(JSON.parse(readFileSync(configPath, "utf8"))).toEqual({
+				anotherPreference: true,
+				compactionModel: "gpt-test:high",
+				sessionReadModel: "reader-test:low",
 			});
 
-			const settingsManager = SettingsManager.create(directory, directory);
-			settingsManager.setTheme("light");
-			await settingsManager.flush();
-			expect(loadCompactionModelSelection(settingsPath)).toEqual(selected);
-			expect(loadSessionReadModelSelection(settingsPath)).toEqual(reader);
-			expect(JSON.parse(readFileSync(settingsPath, "utf8")).theme).toBe("light");
-
-			saveCompactionModelSelection(undefined, settingsPath);
-			expect(loadCompactionModelSelection(settingsPath)).toBeUndefined();
-			expect(JSON.parse(readFileSync(settingsPath, "utf8")).piSuite.compactionModel).toBeNull();
-			expect(loadSessionReadModelSelection(settingsPath)).toEqual(reader);
-			saveSessionReadModelSelection(undefined, settingsPath);
-			expect(loadSessionReadModelSelection(settingsPath)).toBeUndefined();
+			saveCompactionModelSelection(undefined, configPath);
+			expect(loadCompactionModelSelection(configPath)).toBeUndefined();
+			expect(JSON.parse(readFileSync(configPath, "utf8")).compactionModel).toBeNull();
+			expect(loadSessionReadModelSelection(configPath)).toEqual(reader);
+			saveSessionReadModelSelection(undefined, configPath);
+			expect(loadSessionReadModelSelection(configPath)).toBeUndefined();
 		} finally {
 			rmSync(directory, { recursive: true, force: true });
 		}
