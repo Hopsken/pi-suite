@@ -15,6 +15,12 @@ included only when they materially improve the coding-agent experience.
 
 ### Custom extensions
 
+#### Tool selector
+
+The package adds `/tools`, an interactive list of every available tool. Toggle tools between **enabled** and **disabled**
+to change the active tool set immediately. The selection is stored in the current session branch, restored after reloads,
+and follows branch navigation; tools that are no longer available are discarded when restoring a saved selection.
+
 #### Compaction model
 
 The package adds `/compaction-model`, which selects a dedicated model and thinking level for session compaction without
@@ -158,8 +164,8 @@ pi install git:github.com/Hopsken/pi-suite
 ```
 
 Restart Pi after installation or run `/reload`, run `/setup-agents` once, then run `/reload` again to use `Explore`,
-`Librarian`, and `Oracle`. Use `/agents` to manage subagents, `/compaction-model` to configure compaction, and
-`/session-read-model` to configure historical session reading.
+`Librarian`, and `Oracle`. Use `/tools` to manage the active tool set, `/agents` to manage subagents,
+`/compaction-model` to configure compaction, and `/session-read-model` to configure historical session reading.
 
 To install the curated packages piece by piece instead, use:
 
