@@ -40,8 +40,7 @@ describe("question-directed historical session reading", () => {
 			cwd: "/project/reader",
 			model,
 			modelRegistry: {
-				find: (provider: string, modelId: string) =>
-					provider === model.provider && modelId === model.id ? model : undefined,
+				getAvailable: () => [model],
 				getApiKeyAndHeaders: vi.fn().mockResolvedValue(auth),
 			},
 			sessionManager: {
@@ -51,10 +50,10 @@ describe("question-directed historical session reading", () => {
 		} as never;
 	}
 
-	function selectReaderModel(provider: string, modelId: string, thinkingLevel: string): void {
+	function selectReaderModel(modelId: string, thinkingLevel: string): void {
 		writeFileSync(
-			join(agentDirectory, "settings.json"),
-			JSON.stringify({ piSuite: { sessionReadModel: { provider, modelId, thinkingLevel } } }),
+			join(agentDirectory, "pi-suite.json"),
+			JSON.stringify({ sessionReadModel: `${modelId}:${thinkingLevel}` }),
 			"utf8",
 		);
 	}
@@ -95,7 +94,7 @@ describe("question-directed historical session reading", () => {
 			models: [{ id: "reader-model", reasoning: true }],
 		});
 		const model = faux.getModel();
-		selectReaderModel(model.provider, model.id, "high");
+		selectReaderModel(model.id, "high");
 		let request: { tools: unknown; options: Record<string, unknown> | undefined; prompt: string } | undefined;
 		faux.setResponses([
 			(context, options) => {
@@ -147,7 +146,7 @@ describe("question-directed historical session reading", () => {
 			models: [{ id: "reader-model", reasoning: true }],
 		});
 		const model = faux.getModel();
-		selectReaderModel(model.provider, model.id, "low");
+		selectReaderModel(model.id, "low");
 
 		await expect(
 			createSessionToolHarness().read(

@@ -19,6 +19,7 @@ export type ModelChoice = { type: "active" } | { type: "model"; model: Model<Api
 export interface ModelSelectorCopy {
 	title: string;
 	activeDescription: string;
+	currentModelId?: string;
 }
 
 interface SearchableChoice {
@@ -58,14 +59,14 @@ export class ModelSelector extends Container implements Focusable {
 		this.choices = [
 			{
 				key: "active",
-				label: ACTIVE_MODEL_LABEL,
+				label: `${copy.currentModelId ? "" : "(current) "}${ACTIVE_MODEL_LABEL}`,
 				description: copy.activeDescription,
 				searchText: "active session model default",
 				result: { type: "active" },
 			},
 			...models.map((model) => ({
 				key: `${model.provider}/${model.id}`,
-				label: `${model.id} [${model.provider}]`,
+				label: `${model.id === copy.currentModelId ? "(current) " : ""}${model.id} [${model.provider}]`,
 				description: model.name,
 				searchText: modelSearchText(model),
 				result: { type: "model" as const, model },

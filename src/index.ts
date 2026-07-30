@@ -326,10 +326,7 @@ export default function piSuite(pi: ExtensionAPI): void {
 		if (ctx.mode !== "tui") return;
 
 		if (selection) {
-			ctx.ui.notify(
-				`Compaction model: ${selection.provider}/${selection.modelId} (${selection.thinkingLevel} thinking).`,
-				"info",
-			);
+			ctx.ui.notify(`Compaction model: ${selection.modelId} (${selection.thinkingLevel} thinking).`, "info");
 		} else {
 			const activeModel = ctx.model ? `${ctx.model.provider}/${ctx.model.id}` : "not selected";
 			ctx.ui.notify(`Compaction model: ${activeModel} (active session model).`, "info");
@@ -339,7 +336,7 @@ export default function piSuite(pi: ExtensionAPI): void {
 			// reloadSelections already reported the invalid setting and fail-closed behavior.
 		} else if (sessionReadSelection) {
 			ctx.ui.notify(
-				`Session reader model: ${sessionReadSelection.provider}/${sessionReadSelection.modelId} (${sessionReadSelection.thinkingLevel} thinking).`,
+				`Session reader model: ${sessionReadSelection.modelId} (${sessionReadSelection.thinkingLevel} thinking).`,
 				"info",
 			);
 		} else {
@@ -348,154 +345,172 @@ export default function piSuite(pi: ExtensionAPI): void {
 		}
 	});
 
-	pi.registerCommand("compaction-model", {
-		description: "Select the model and thinking level used for session compaction",
-		handler: async (_args, ctx) => {
-			if (ctx.mode !== "tui") {
-				ctx.ui.notify("The compaction model picker requires interactive mode.", "warning");
-				return;
-			}
+	const configureCompactionModel = async (ctx: ExtensionContext): Promise<boolean> => {
+		if (ctx.mode !== "tui") {
+			ctx.ui.notify("/suite requires interactive mode.", "warning");
+			return true;
+		}
 
-			const models = [...ctx.modelRegistry.getAvailable()].sort((left, right) => {
-				const leftSelected = left.provider === selection?.provider && left.id === selection.modelId;
-				const rightSelected = right.provider === selection?.provider && right.id === selection.modelId;
-				if (leftSelected !== rightSelected) return leftSelected ? -1 : 1;
-				return modelLabel(left).localeCompare(modelLabel(right));
-			});
+		const models = [...ctx.modelRegistry.getAvailable()].sort((left, right) => {
+			const leftSelected = left.id === selection?.modelId;
+			const rightSelected = right.id === selection?.modelId;
+			if (leftSelected !== rightSelected) return leftSelected ? -1 : 1;
+			return modelLabel(left).localeCompare(modelLabel(right));
+		});
 
-			const choice = await ctx.ui.custom<ModelChoice>(
-				(tui, theme, _keybindings, done) =>
-					new ModelSelector(tui, theme, models, done, {
-						title: "Select Compaction Model",
-						activeDescription: "Follow the conversation model in each session",
-					}),
-			);
-			if (!choice) return;
+		const choice = await ctx.ui.custom<ModelChoice>(
+			(tui, theme, _keybindings, done) =>
+				new ModelSelector(tui, theme, models, done, {
+					title: "Select Compaction Model",
+					activeDescription: "Follow the conversation model in each session",
+					currentModelId: selection?.modelId,
+				}),
+		);
+		if (!choice) return false;
 
-			if (choice.type === "active") {
-				try {
-					saveCompactionModelSelection(undefined);
-				} catch (error) {
-					const reason = error instanceof Error ? error.message : String(error);
-					ctx.ui.notify(`Could not save the compaction model setting: ${reason}`, "error");
-					return;
-				}
-				selection = undefined;
-				ctx.ui.notify("Compaction will use the active session model.", "info");
-				return;
-			}
-
-			const model = choice.model;
-
-			const supportedLevels = getSupportedThinkingLevels(model);
-			const chosenLevel = await ctx.ui.select("Compaction thinking level", supportedLevels);
-			const thinkingLevel = supportedLevels.find((level) => level === chosenLevel);
-			if (!thinkingLevel) return;
-
-			const nextSelection: CompactionModelSelection = {
-				provider: model.provider,
-				modelId: model.id,
-				thinkingLevel,
-			};
+		if (choice.type === "active") {
 			try {
-				saveCompactionModelSelection(nextSelection);
+				saveCompactionModelSelection(undefined);
 			} catch (error) {
 				const reason = error instanceof Error ? error.message : String(error);
 				ctx.ui.notify(`Could not save the compaction model setting: ${reason}`, "error");
-				return;
+				return true;
 			}
-			selection = nextSelection;
-			ctx.ui.notify(`Compaction will use ${model.provider}/${model.id} with ${thinkingLevel} thinking.`, "info");
-		},
-	});
+			selection = undefined;
+			ctx.ui.notify("Compaction will use the active session model.", "info");
+			return true;
+		}
 
-	pi.registerCommand("session-read-model", {
-		description: "Select the model and thinking level used to read historical sessions",
-		handler: async (_args, ctx) => {
-			if (ctx.mode !== "tui") {
-				ctx.ui.notify("The session reader model picker requires interactive mode.", "warning");
-				return;
-			}
+		const model = choice.model;
 
-			const models = [...ctx.modelRegistry.getAvailable()].sort((left, right) => {
-				const leftSelected =
-					left.provider === sessionReadSelection?.provider && left.id === sessionReadSelection.modelId;
-				const rightSelected =
-					right.provider === sessionReadSelection?.provider && right.id === sessionReadSelection.modelId;
-				if (leftSelected !== rightSelected) return leftSelected ? -1 : 1;
-				return modelLabel(left).localeCompare(modelLabel(right));
-			});
+		const supportedLevels = getSupportedThinkingLevels(model);
+		const chosenLevel = await ctx.ui.select("Compaction thinking level", supportedLevels);
+		const thinkingLevel = supportedLevels.find((level) => level === chosenLevel);
+		if (!thinkingLevel) return false;
 
-			const choice = await ctx.ui.custom<ModelChoice>(
-				(tui, theme, _keybindings, done) =>
-					new ModelSelector(tui, theme, models, done, {
-						title: "Select Session Reader Model",
-						activeDescription: "Use each invoking session's active model",
-					}),
-			);
-			if (!choice) return;
+		const nextSelection: CompactionModelSelection = {
+			modelId: model.id,
+			thinkingLevel,
+		};
+		try {
+			saveCompactionModelSelection(nextSelection);
+		} catch (error) {
+			const reason = error instanceof Error ? error.message : String(error);
+			ctx.ui.notify(`Could not save the compaction model setting: ${reason}`, "error");
+			return true;
+		}
+		selection = nextSelection;
+		ctx.ui.notify(`Compaction will use ${model.provider}/${model.id} with ${thinkingLevel} thinking.`, "info");
+		return true;
+	};
 
-			if (choice.type === "active") {
-				try {
-					saveSessionReadModelSelection(undefined);
-				} catch (error) {
-					const reason = error instanceof Error ? error.message : String(error);
-					ctx.ui.notify(`Could not save the session reader model setting: ${reason}`, "error");
-					return;
-				}
-				sessionReadSelection = undefined;
-				sessionReadSelectionError = undefined;
-				ctx.ui.notify("Historical session reading will use the active session model.", "info");
-				return;
-			}
+	const configureSessionReadModel = async (ctx: ExtensionContext): Promise<boolean> => {
+		if (ctx.mode !== "tui") {
+			ctx.ui.notify("/suite requires interactive mode.", "warning");
+			return true;
+		}
 
-			const model = choice.model;
-			const supportedLevels = getSupportedThinkingLevels(model);
-			const chosenLevel = await ctx.ui.select("Session reader thinking level", supportedLevels);
-			const thinkingLevel = supportedLevels.find((level) => level === chosenLevel);
-			if (!thinkingLevel) return;
+		const models = [...ctx.modelRegistry.getAvailable()].sort((left, right) => {
+			const leftSelected = left.id === sessionReadSelection?.modelId;
+			const rightSelected = right.id === sessionReadSelection?.modelId;
+			if (leftSelected !== rightSelected) return leftSelected ? -1 : 1;
+			return modelLabel(left).localeCompare(modelLabel(right));
+		});
 
-			const nextSelection: SessionReadModelSelection = {
-				provider: model.provider,
-				modelId: model.id,
-				thinkingLevel,
-			};
+		const choice = await ctx.ui.custom<ModelChoice>(
+			(tui, theme, _keybindings, done) =>
+				new ModelSelector(tui, theme, models, done, {
+					title: "Select Session Reader Model",
+					activeDescription: "Use each invoking session's active model",
+					currentModelId: sessionReadSelection?.modelId,
+				}),
+		);
+		if (!choice) return false;
+
+		if (choice.type === "active") {
 			try {
-				saveSessionReadModelSelection(nextSelection);
+				saveSessionReadModelSelection(undefined);
 			} catch (error) {
 				const reason = error instanceof Error ? error.message : String(error);
 				ctx.ui.notify(`Could not save the session reader model setting: ${reason}`, "error");
-				return;
+				return true;
 			}
-			sessionReadSelection = nextSelection;
+			sessionReadSelection = undefined;
 			sessionReadSelectionError = undefined;
+			ctx.ui.notify("Historical session reading will use the active session model.", "info");
+			return true;
+		}
+
+		const model = choice.model;
+		const supportedLevels = getSupportedThinkingLevels(model);
+		const chosenLevel = await ctx.ui.select("Session reader thinking level", supportedLevels);
+		const thinkingLevel = supportedLevels.find((level) => level === chosenLevel);
+		if (!thinkingLevel) return false;
+
+		const nextSelection: SessionReadModelSelection = {
+			modelId: model.id,
+			thinkingLevel,
+		};
+		try {
+			saveSessionReadModelSelection(nextSelection);
+		} catch (error) {
+			const reason = error instanceof Error ? error.message : String(error);
+			ctx.ui.notify(`Could not save the session reader model setting: ${reason}`, "error");
+			return true;
+		}
+		sessionReadSelection = nextSelection;
+		sessionReadSelectionError = undefined;
+		ctx.ui.notify(
+			`Historical session reading will use ${model.provider}/${model.id} with ${thinkingLevel} thinking.`,
+			"info",
+		);
+		return true;
+	};
+
+	const setupAgents = async (ctx: ExtensionContext): Promise<void> => {
+		try {
+			const result = installAgentPresets();
+			const installed =
+				result.installed.length > 0
+					? `Installed ${result.installed.length} preset${result.installed.length === 1 ? "" : "s"}.`
+					: "All presets were already installed.";
+			const skipped =
+				result.skipped.length > 0
+					? ` Left ${result.skipped.length} existing ${result.skipped.length === 1 ? "definition" : "definitions"} unchanged.`
+					: "";
 			ctx.ui.notify(
-				`Historical session reading will use ${model.provider}/${model.id} with ${thinkingLevel} thinking.`,
+				`${installed}${skipped} Upstream default agents are disabled globally. Run /reload to use the presets.`,
 				"info",
 			);
-		},
-	});
+		} catch (error) {
+			const reason = error instanceof Error ? error.message : String(error);
+			ctx.ui.notify(`Could not install Pi Suite agent presets: ${reason}`, "error");
+		}
+	};
 
-	pi.registerCommand("setup-agents", {
-		description: "Install Pi Suite's preset subagents globally",
+	pi.registerCommand("suite", {
+		description: "Configure Pi Suite",
 		handler: async (_args, ctx) => {
-			try {
-				const result = installAgentPresets();
-				const installed =
-					result.installed.length > 0
-						? `Installed ${result.installed.length} preset${result.installed.length === 1 ? "" : "s"}.`
-						: "All presets were already installed.";
-				const skipped =
-					result.skipped.length > 0
-						? ` Left ${result.skipped.length} existing ${result.skipped.length === 1 ? "definition" : "definitions"} unchanged.`
-						: "";
-				ctx.ui.notify(
-					`${installed}${skipped} Upstream default agents are disabled globally. Run /reload to use the presets.`,
-					"info",
-				);
-			} catch (error) {
-				const reason = error instanceof Error ? error.message : String(error);
-				ctx.ui.notify(`Could not install Pi Suite agent presets: ${reason}`, "error");
+			if (ctx.mode !== "tui") {
+				ctx.ui.notify("/suite requires interactive mode.", "warning");
+				return;
+			}
+
+			while (true) {
+				const item = await ctx.ui.select("Pi Suite Configuration", [
+					"Compaction model",
+					"Session reader model",
+					"Setup agents",
+				]);
+				if (!item) return;
+				if (item === "Setup agents") {
+					await setupAgents(ctx);
+					return;
+				}
+
+				const completed =
+					item === "Compaction model" ? await configureCompactionModel(ctx) : await configureSessionReadModel(ctx);
+				if (completed) return;
 			}
 		},
 	});
@@ -504,18 +519,15 @@ export default function piSuite(pi: ExtensionAPI): void {
 		const currentSelection = selection;
 		if (!currentSelection) return;
 
-		const model = ctx.modelRegistry.find(currentSelection.provider, currentSelection.modelId);
+		const model = ctx.modelRegistry.getAvailable().find((candidate) => candidate.id === currentSelection.modelId);
 		if (!model) {
-			warn(ctx, `Compaction model ${currentSelection.provider}/${currentSelection.modelId} was not found.`);
+			warn(ctx, `Compaction model ${currentSelection.modelId} was not found.`);
 			return;
 		}
 
 		const auth = await ctx.modelRegistry.getApiKeyAndHeaders(model);
 		if (!auth.ok) {
-			warn(
-				ctx,
-				`Authentication failed for ${currentSelection.provider}/${currentSelection.modelId}: ${auth.error}.`,
-			);
+			warn(ctx, `Authentication failed for ${currentSelection.modelId}: ${auth.error}.`);
 			return;
 		}
 
@@ -542,7 +554,7 @@ export default function piSuite(pi: ExtensionAPI): void {
 		} catch (error) {
 			if (!event.signal.aborted) {
 				const reason = error instanceof Error ? error.message : String(error);
-				warn(ctx, `Compaction with ${currentSelection.provider}/${currentSelection.modelId} failed: ${reason}.`);
+				warn(ctx, `Compaction with ${currentSelection.modelId} failed: ${reason}.`);
 			}
 			return;
 		}
@@ -573,7 +585,7 @@ export {
 	includePreviousFileOperations,
 	loadCompactionModelSelection,
 	loadSessionReadModelSelection,
-	PI_SUITE_SETTINGS_KEY,
+	PI_SUITE_CONFIG_FILE,
 	type SessionReadModelSelection,
 	saveCompactionModelSelection,
 	saveSessionReadModelSelection,

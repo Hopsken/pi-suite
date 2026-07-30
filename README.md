@@ -33,11 +33,11 @@ and follows branch navigation; tools that are no longer available are discarded 
 
 #### Compaction model
 
-The package adds `/compaction-model`, which selects a dedicated model and thinking level for session compaction without
-changing the active conversation model.
+The package adds `/suite`, an interactive configuration menu. Its **Compaction model** item selects a dedicated model and
+thinking level for session compaction without changing the active conversation model.
 
-The selection is stored in Pi's global `settings.json` under `piSuite.compactionModel`, so it persists across new and
-resumed sessions. Choose **Use active session model (default)** to reset it.
+The selection is stored in `~/.pi/agent/pi-suite.json` as one `compactionModel` value in `<model-id>:<thinking>` format, so
+it persists across new and resumed sessions. Choose **Use active session model (default)** to reset it.
 
 Compaction continues to use Pi's native implementation, including its prompts, structured summaries, cut-point and recent
 message retention, split-turn handling, iterative summaries, file-operation tracking, and `/compact` instructions. If the
@@ -74,10 +74,10 @@ Bare terms, quoted phrases, and `id:`, `name:`, `cwd:`, date, `model:`, `tool:`,
 semantics. `file:` uses only structured paths from Pi's read, write, edit, and compaction records; it does not infer file
 access from shell commands or conversational mentions.
 
-Use `/session-read-model` to choose the model and supported thinking level used by `session_read`. The selection is stored
-under `piSuite.sessionReadModel` in Pi's global `settings.json`. **Use active session model (default)** follows the invoking
-session's model and thinking level. An explicitly configured model fails closed if it disappears or cannot authenticate;
-historical content is never silently sent to another provider.
+Use the **Session reader model** item in `/suite` to choose the model and supported thinking level used by `session_read`.
+The selection is stored in `~/.pi/agent/pi-suite.json` as one `sessionReadModel` value in `<model-id>:<thinking>` format.
+**Use active session model (default)** follows the invoking session's model and thinking level. An explicitly configured
+model fails closed if it disappears or cannot authenticate; historical content is never silently sent to another model.
 
 Both tools use Pi's public `SessionManager` for discovery, opening, compatibility, and persisted leaf semantics. Opening an
 older session can therefore run Pi's normal migration and rewrite. The extension does not otherwise switch, append to,
@@ -126,7 +126,8 @@ All four packages are pinned and bundled into `pi-suite`, so `pi install npm:pi-
 compaction feature. The suite exposes only the Web Access extension; it does not register `pi-web-access`'s optional
 Librarian skill. Pi Suite's Librarian below is an independently curated subagent preset instead.
 
-Run `/setup-agents` once to install Pi Suite's read-only `Explore`, `Librarian`, and `Oracle` subagents globally:
+Use **Setup agents** in `/suite` once to install Pi Suite's read-only `Explore`, `Librarian`, and `Oracle` subagents
+globally:
 
 - **Explore** provides finder-style behavior and concept discovery, chained searches, call-path tracing, and cross-module
   correlation in an isolated context. It returns concise findings with file and line evidence. Pi should use its direct
@@ -173,9 +174,9 @@ Or install directly from a Git repository:
 pi install git:github.com/Hopsken/pi-suite
 ```
 
-Restart Pi after installation or run `/reload`, run `/setup-agents` once, then run `/reload` again to use `Explore`,
-`Librarian`, and `Oracle`. Use `/tools` to manage the active tool set, `/agents` to manage subagents,
-`/compaction-model` to configure compaction, and `/session-read-model` to configure historical session reading.
+Restart Pi after installation or run `/reload`, use **Setup agents** in `/suite` once, then run `/reload` again to use
+`Explore`, `Librarian`, and `Oracle`. Use `/tools` to manage the active tool set, `/agents` to manage subagents, and `/suite`
+to configure Pi Suite.
 
 To install the curated packages piece by piece instead, use:
 

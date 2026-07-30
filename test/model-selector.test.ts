@@ -31,13 +31,14 @@ describe("ModelSelector", () => {
 			} as never,
 			[summaryModel, codingModel],
 			done,
-			{ title: "Select Test Model", activeDescription: "Use active" },
+			{ title: "Select Test Model", activeDescription: "Use active", currentModelId: summaryModel.id },
 		);
 
 		for (const character of "summary specialist") selector.handleInput(character);
 
 		const rendered = selector.render(100).join("\n");
 		expect(rendered).toContain("Fast Summary Specialist");
+		expect(rendered).toContain("(current) model-a");
 		expect(rendered).not.toContain("Careful Coding Model");
 
 		selector.handleInput("\r");

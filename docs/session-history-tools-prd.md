@@ -350,30 +350,24 @@ if it were complete.
 
 ## Reader model configuration
 
-Pi Suite adds an interactive command:
+Pi Suite adds an interactive configuration menu:
 
 ```text
-/session-read-model
+/suite
 ```
 
-It follows the existing `/compaction-model` experience:
+Its **Session reader model** item:
 
 - list only models available through Pi's model registry;
 - search by provider, model ID, and model name;
 - allow only thinking levels supported by the selected model; and
 - offer **Use active session model (default)**.
 
-An explicit selection is stored globally in Pi's `settings.json`:
+An explicit selection is stored globally in `~/.pi/agent/pi-suite.json`:
 
 ```json
 {
-  "piSuite": {
-    "sessionReadModel": {
-      "provider": "provider-name",
-      "modelId": "model-id",
-      "thinkingLevel": "low"
-    }
-  }
+  "sessionReadModel": "model-id:low"
 }
 ```
 
