@@ -380,6 +380,32 @@ describe("Pi Suite extension", () => {
 		);
 	});
 
+	test("returns to the Suite menu when the compaction model picker is cancelled", async () => {
+		const { commands } = createExtensionApi();
+		const select = vi.fn().mockResolvedValueOnce("Compaction model").mockResolvedValueOnce(undefined);
+
+		await commands.get("suite")?.handler("", {
+			mode: "tui",
+			ui: {
+				custom: vi.fn().mockResolvedValue(undefined),
+				select,
+				notify: vi.fn(),
+			},
+			modelRegistry: { getAvailable: () => [] },
+		});
+
+		expect(select).toHaveBeenNthCalledWith(1, "Pi Suite Configuration", [
+			"Compaction model",
+			"Session reader model",
+			"Setup agents",
+		]);
+		expect(select).toHaveBeenNthCalledWith(2, "Pi Suite Configuration", [
+			"Compaction model",
+			"Session reader model",
+			"Setup agents",
+		]);
+	});
+
 	test("keeps session reading fail-closed when its persisted model setting is invalid", async () => {
 		writeFileSync(
 			join(agentDirectory, "pi-suite.json"),
