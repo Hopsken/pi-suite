@@ -21,6 +21,10 @@ const COMMON_CLI_TOOLS = [
 	{ name: "pnpm", commands: ["pnpm"] },
 	{ name: "yarn", commands: ["yarn"] },
 	{ name: "agent-browser", commands: ["agent-browser"] },
+	{ name: "mise", commands: ["mise"] },
+	{ name: "asdf", commands: ["asdf"] },
+	{ name: "Nix CLI", commands: ["nix"] },
+	{ name: "GitHub CLI", commands: ["gh"] },
 	{ name: "GitLab CLI", commands: ["glab"] },
 ] as const;
 

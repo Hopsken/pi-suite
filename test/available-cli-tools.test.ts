@@ -57,6 +57,10 @@ describe("available CLI tools prompt", () => {
 		addCommand("rg");
 		addCommand("sg");
 		addCommand("ast-grep");
+		addCommand("mise");
+		addCommand("asdf");
+		addCommand("nix");
+		addCommand("gh");
 		addCommand("glab");
 		addCommand("unknown-tool");
 		addCommand("jq", false);
@@ -68,7 +72,7 @@ describe("available CLI tools prompt", () => {
 				"Base prompt",
 				"",
 				"## Available CLI tools",
-				"The following commonly used CLI tools were detected on PATH: `tmux`, ripgrep (`rg`), `ast-grep`, GitLab CLI (`glab`).",
+				"The following commonly used CLI tools were detected on PATH: `tmux`, ripgrep (`rg`), `ast-grep`, `mise`, `asdf`, Nix CLI (`nix`), GitHub CLI (`gh`), GitLab CLI (`glab`).",
 				"Use them directly when appropriate; availability does not imply that a tool is configured or that its services are running.",
 			].join("\n"),
 		});

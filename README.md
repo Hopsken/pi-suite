@@ -20,9 +20,10 @@ included only when they materially improve the coding-agent experience.
 Pi Suite detects commonly used CLI tools when a session starts and appends the available commands to the
 agent's system prompt. This gives the agent an immediate view of useful environment capabilities without spending Bash
 calls on discovery. Detection covers tmux, ffmpeg, jq, Docker, fzf, unzip, lsof, zstd, websocat, ripgrep, ast-grep, Bun,
-pnpm, Yarn, agent-browser, and the GitLab CLI. Availability does not imply that a tool is configured or that a related
-service, such as the Docker daemon, is running. Discovery uses Pi's configured `shellPath` and `shellCommandPrefix`,
-including merged project settings, so it sees the same command environment as Pi's Bash tool.
+pnpm, Yarn, agent-browser, mise, asdf, the Nix CLI, the GitHub CLI, and the GitLab CLI. Availability does not imply that a
+tool is configured or that a related service, such as the Docker daemon, is running. Discovery uses Pi's configured
+`shellPath` and `shellCommandPrefix`, including merged project settings, so it sees the same command environment as Pi's
+Bash tool.
 
 #### Tool selector
 
