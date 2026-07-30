@@ -1,6 +1,6 @@
 # PRD: Question-directed Pi session search and read
 
-**Status:** Proposed  
+**Status:** Accepted
 **Target:** Pi Suite  
 **Tracking issue:** [#1](https://github.com/Hopsken/pi-suite/issues/1)  
 **Last updated:** 2026-07-29
@@ -17,8 +17,9 @@ sessions discoverable without automatically injecting unrelated history into the
   question-specific, evidence-backed summary rather than dumping the transcript into the caller's context.
 
 Search covers all historical working directories by default. Callers can add `cwd:.` to restrict a query to the current
-working directory. Both tools operate only on each session's active branch, always exclude the executing session, and never
-modify a session file.
+working directory. Both tools operate only on each session's active branch and always exclude the executing session. The
+extension never intentionally appends to, branches, compacts, or edits a historical session; opening an older session may
+perform Pi's native migration and rewrite.
 
 ## Problem
 
@@ -44,7 +45,8 @@ content, and makes the active agent responsible for both retrieval and interpret
 5. Recover original active-branch history that predates compaction, not only the effective compacted context.
 6. Keep search local and deterministic; use AI only for question-directed reading.
 7. Let the user control the model and thinking level used for session reading.
-8. Remain read-only, cancellable, bounded, and tolerant of individual malformed session files or entries.
+8. Remain semantically read-only, cancellable where Pi's public APIs permit, bounded, and tolerant of individual malformed
+   session files or entries.
 
 ## Non-goals
 
@@ -89,10 +91,12 @@ Pi session files are append-only entry trees, but exposing that tree to the read
 discarded decisions easy to misinterpret. The first version follows only the active root-to-leaf path and does not expose a
 branch parameter.
 
-### Read-only means no migration or rewrite
+### Pi owns session compatibility
 
-The tools must not switch sessions, append entries, move a leaf, invoke compaction, or open a historical session through an
-API that may migrate and rewrite it. Parsing malformed or older data must never change the source JSONL.
+The tools use Pi's public `SessionManager` discovery, open, migration, and active-branch behavior rather than maintaining a
+second implementation of Pi's session format. The extension does not switch the invoking session, append entries, move a
+leaf, invoke compaction, or directly edit historical JSONL. `SessionManager.open()` may migrate and rewrite an older session
+as part of Pi's normal internal compatibility behavior.
 
 ## Relevant Pi data constraints
 
@@ -105,9 +109,10 @@ JSONL. Consequently, a historical reader can recover original messages on the ac
 longer present in the resumed model context.
 
 For a persisted historical session, "active branch" means the root-to-leaf path Pi would use when resuming that file. The
-implementation must use Pi's persisted leaf semantics rather than ask the reader model to infer a branch. Traversal must be
-cycle-safe and depth-bounded. A broken parent chain produces a warning and a partial path; it must not cause traversal into
-another branch.
+implementation obtains Pi's selected leaf and entries through `SessionManager`, rather than asking the reader model to
+infer a branch. A thin extension-side traversal guard remains cycle-safe and depth-bounded because Pi 0.81.1's public
+`getBranch()` assumes a valid parent chain. A broken parent chain produces a warning and a partial path; it must not cause
+traversal into another branch.
 
 ## User workflow
 
@@ -246,9 +251,10 @@ The model-visible tool content must prominently show `sessionId` and `cwd`. Retu
 session. Tool details may also carry the structured representation for UI rendering and diagnostics, but required agent
 information must not exist only in hidden details.
 
-If files or lines are skipped because they are unreadable or malformed, the result includes aggregate warnings without
-failing unrelated valid sessions. Reaching an implementation resource limit must produce an explicit incomplete-results
-warning; it must never look like a complete empty result.
+If Pi reports that a session cannot be opened, the result includes an aggregate warning without failing unrelated valid
+sessions. Pi 0.81.1 silently skips malformed JSONL lines during discovery and opening, so line-level malformed counts are
+best-effort rather than reconstructed by the extension. Reaching an implementation resource limit must produce an explicit
+incomplete-results warning; it must never look like a complete empty result.
 
 ## Tool: `session_read`
 
@@ -387,7 +393,8 @@ an exact-current-directory question, and the active session is always excluded.
 
 ## Privacy and security requirements
 
-1. Search and read never mutate, migrate, switch, append to, or compact a historical session.
+1. Search and read never intentionally switch, append to, branch, edit, or compact a historical session. Opening may run
+   Pi's native migration and rewrite for an older session version.
 2. Default global search is disclosed in the tool description and documentation.
 3. Every search result and read answer visibly identifies its source cwd.
 4. Search returns short, bounded snippets rather than transcripts.
@@ -402,13 +409,14 @@ an exact-current-directory question, and the active session is always excluded.
 
 ## Performance and compatibility requirements
 
-- Reuse Pi's public session discovery and read-only parsing facilities where they preserve the no-write guarantee.
-- Do not use `SessionManager.open()` when it can migrate or rewrite a historical file.
-- Accept supported older session versions without rewriting them.
+- Use Pi's public `SessionManager.listAll()` and `SessionManager.open()` APIs for discovery, parsing, compatibility, and
+  persisted leaf semantics.
+- Accept Pi's native migration and rewrite when opening supported older session versions.
 - Skip unknown future entry and content-block types with warnings rather than failing an otherwise usable session.
-- Tolerate an incomplete final JSONL line caused by a concurrent append.
+- Rely on Pi's parser to tolerate malformed lines, including an incomplete final JSONL line caused by a concurrent append.
 - Use cycle detection and a maximum traversal depth for parent chains.
-- Honor `AbortSignal` during discovery, parsing, normalization, and inference.
+- Honor `AbortSignal` before and after Pi discovery/open calls, between sessions, during normalization, and throughout
+  inference. Pi 0.81.1 does not expose mid-call cancellation for `listAll()` or synchronous `open()`.
 - Bound read concurrency, snippet size, tool argument/result material, model input, model output, and total hierarchical calls.
 - Never silently truncate a search or read because a bound was reached.
 - The first version may use an in-process cache keyed by canonical path, file size, and modification time. It does not add a
@@ -420,7 +428,7 @@ an exact-current-directory question, and the active session is always excluded.
 | --- | --- |
 | No search matches | Return an empty result and state that all historical cwd values were searched unless `cwd:` constrained it. |
 | Invalid query | Return a query error identifying the invalid token or value. |
-| One unreadable or malformed session | Skip it, continue, and return an aggregate warning. |
+| One session Pi cannot discover or open | Skip it when observable, continue, and return an aggregate warning. |
 | Broken active parent chain | Use only the safe partial path and mark the result incomplete. |
 | Ambiguous session ID prefix | Return matching IDs or require a full ID; do not choose one. |
 | Target is the executing session | Return an error explaining that the tools operate on historical sessions only. |
@@ -445,8 +453,10 @@ an exact-current-directory question, and the active session is always excluded.
 13. Material reader claims include valid session and entry references from the supplied evidence.
 14. A configured reader model is used with its selected thinking level and complete authentication context.
 15. Failure of an explicitly configured reader model does not invoke the active model.
-16. Historical session files are byte-for-byte unchanged after search and read operations.
-17. Search parsing and reader inference stop when the tool abort signal is triggered.
+16. Opening an older session may migrate it through Pi's native `SessionManager`; the extension performs no other session
+    mutation.
+17. Search parsing and reader inference stop when the tool abort signal is triggered; discovery/open cancellation follows
+    the boundaries exposed by Pi's public API.
 18. Oracle's effective tool allowlist contains both tools; Explore and Librarian remain unchanged.
 
 ## Rollout and documentation
@@ -454,14 +464,14 @@ an exact-current-directory question, and the active session is always excluded.
 Implementation should ship with:
 
 - unit tests for query parsing, active-path extraction, normalization, redaction, ranking, and failure handling;
-- integration tests using realistic Pi JSONL fixtures, including compaction, older versions, corruption, partial final lines,
-  and sessions from multiple cwd values;
+- integration tests using realistic Pi sessions, including compaction, native older-version migration, corruption, partial
+  final lines, and sessions from multiple cwd values;
 - model tests using a faux provider for single-pass, hierarchical, authentication-failure, length, and cancellation paths;
 - distribution tests for main-agent and Oracle tool visibility;
 - README documentation for both tools, the global default search scope, `cwd:.`, reader-model configuration, privacy
   behavior, and limitations; and
-- an upgrade note stating that the feature reads existing Pi sessions without migrating them or creating a persistent
-  index.
+- an upgrade note stating that first access may run Pi's native migration for older sessions and that the feature creates no
+  persistent search index.
 
 ## Future considerations
 

@@ -6,7 +6,9 @@ import { describe, expect, test } from "vitest";
 import {
 	includePreviousFileOperations,
 	loadCompactionModelSelection,
+	loadSessionReadModelSelection,
 	saveCompactionModelSelection,
+	saveSessionReadModelSelection,
 } from "../src/state.ts";
 
 describe("compaction model settings", () => {
@@ -18,26 +20,37 @@ describe("compaction model settings", () => {
 			modelId: "gpt-test",
 			thinkingLevel: "high",
 		} as const;
+		const reader = {
+			provider: "anthropic",
+			modelId: "reader-test",
+			thinkingLevel: "low",
+		} as const;
 		writeFileSync(settingsPath, JSON.stringify({ theme: "dark", piSuite: { anotherPreference: true } }), "utf8");
 
 		try {
 			saveCompactionModelSelection(selected, settingsPath);
+			saveSessionReadModelSelection(reader, settingsPath);
 
 			expect(loadCompactionModelSelection(settingsPath)).toEqual(selected);
+			expect(loadSessionReadModelSelection(settingsPath)).toEqual(reader);
 			expect(JSON.parse(readFileSync(settingsPath, "utf8"))).toEqual({
 				theme: "dark",
-				piSuite: { anotherPreference: true, compactionModel: selected },
+				piSuite: { anotherPreference: true, compactionModel: selected, sessionReadModel: reader },
 			});
 
 			const settingsManager = SettingsManager.create(directory, directory);
 			settingsManager.setTheme("light");
 			await settingsManager.flush();
 			expect(loadCompactionModelSelection(settingsPath)).toEqual(selected);
+			expect(loadSessionReadModelSelection(settingsPath)).toEqual(reader);
 			expect(JSON.parse(readFileSync(settingsPath, "utf8")).theme).toBe("light");
 
 			saveCompactionModelSelection(undefined, settingsPath);
 			expect(loadCompactionModelSelection(settingsPath)).toBeUndefined();
 			expect(JSON.parse(readFileSync(settingsPath, "utf8")).piSuite.compactionModel).toBeNull();
+			expect(loadSessionReadModelSelection(settingsPath)).toEqual(reader);
+			saveSessionReadModelSelection(undefined, settingsPath);
+			expect(loadSessionReadModelSelection(settingsPath)).toBeUndefined();
 		} finally {
 			rmSync(directory, { recursive: true, force: true });
 		}

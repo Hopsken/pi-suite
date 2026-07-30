@@ -1,0 +1,41 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+node_version="22.19.0"
+node_root="$HOME/.local/share/node-v$node_version"
+
+if [[ ! -x "$node_root/bin/node" ]]; then
+	case "$(uname -m)" in
+		x86_64) node_arch="x64" ;;
+		aarch64 | arm64) node_arch="arm64" ;;
+		*) echo "Unsupported Node.js architecture: $(uname -m)" >&2; exit 1 ;;
+	esac
+
+	echo "Installing Node.js v$node_version..."
+	temporary_archive="$(mktemp)"
+	trap 'rm -f "$temporary_archive"' EXIT
+	curl --fail --location --silent --show-error \
+		"https://nodejs.org/dist/v$node_version/node-v$node_version-linux-$node_arch.tar.xz" \
+		--output "$temporary_archive"
+	mkdir -p "$node_root"
+	tar -xJf "$temporary_archive" --strip-components=1 --directory "$node_root"
+	rm -f "$temporary_archive"
+	trap - EXIT
+fi
+
+export PATH="$node_root/bin:$PATH"
+
+profile_marker="# pi-suite Node.js toolchain"
+if ! grep -Fqx "$profile_marker" "$HOME/.bash_profile" 2>/dev/null; then
+	cat >> "$HOME/.bash_profile" <<EOF
+
+$profile_marker
+export PATH="$node_root/bin:\$PATH"
+EOF
+fi
+
+corepack enable --install-directory "$node_root/bin"
+corepack prepare pnpm@11.16.0 --activate
+
+echo "Installing project dependencies..."
+pnpm install --frozen-lockfile

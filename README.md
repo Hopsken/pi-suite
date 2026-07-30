@@ -33,6 +33,44 @@ names. The thinking-level picker is limited to levels supported by the selected 
 > Pi currently authenticates the active conversation model before running compaction hooks. The active model therefore
 > still needs valid authentication even when a dedicated compaction model is selected.
 
+#### Historical session search and read
+
+Pi Suite adds two tools for recovering evidence from earlier Pi sessions without injecting history automatically:
+
+- `session_search` performs deterministic local search and returns session metadata plus short active-branch snippets.
+- `session_read` answers one focused question from a selected session with entry-level evidence citations.
+
+Search covers sessions from **all historical working directories by default**. Every result includes its source cwd. Add
+`cwd:.` when the question must be restricted to the exact current directory. The executing session is always excluded.
+
+Examples:
+
+```text
+"refresh token" cwd:. after:30d
+"connection pool" tool:bash
+file:src/auth.ts model:openai-codex/gpt-5.6-terra
+id:019abc
+```
+
+Bare terms, quoted phrases, and `id:`, `name:`, `cwd:`, date, `model:`, `tool:`, and `file:` filters compose with AND
+semantics. `file:` uses only structured paths from Pi's read, write, edit, and compaction records; it does not infer file
+access from shell commands or conversational mentions.
+
+Use `/session-read-model` to choose the model and supported thinking level used by `session_read`. The selection is stored
+under `piSuite.sessionReadModel` in Pi's global `settings.json`. **Use active session model (default)** follows the invoking
+session's model and thinking level. An explicitly configured model fails closed if it disappears or cannot authenticate;
+historical content is never silently sent to another provider.
+
+Both tools use Pi's public `SessionManager` for discovery, opening, compatibility, and persisted leaf semantics. Opening an
+older session can therefore run Pi's normal migration and rewrite. The extension does not otherwise switch, append to,
+branch, edit, or compact historical sessions, and it creates no persistent search index. Search and read use only the
+active branch, but `session_read` includes original active-path evidence that predates compaction.
+
+Before matching, display, or reader inference, Pi Suite excludes images, thinking, signatures, provider diagnostics, and
+opaque extension state; it also redacts known secret-like structured fields. This data minimization cannot guarantee that
+arbitrary secrets embedded in plain text are detected. Reader inference is tool-free and treats historical content as
+untrusted evidence.
+
 ### Pi reports "Nothing to compact"
 
 Pi checks whether any persisted conversation entries fall outside `compaction.keepRecentTokens` before it invokes extension
@@ -119,7 +157,8 @@ pi install git:github.com/Hopsken/pi-suite
 ```
 
 Restart Pi after installation or run `/reload`, run `/setup-agents` once, then run `/reload` again to use `Explore`,
-`Librarian`, and `Oracle`. Use `/agents` to manage subagents and `/compaction-model` to configure compaction.
+`Librarian`, and `Oracle`. Use `/agents` to manage subagents, `/compaction-model` to configure compaction, and
+`/session-read-model` to configure historical session reading.
 
 To install the curated packages piece by piece instead, use:
 

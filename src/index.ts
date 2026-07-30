@@ -3,12 +3,16 @@ import { clampThinkingLevel, getSupportedThinkingLevels } from "@earendil-works/
 import { compact, type ExtensionAPI, type ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
 import { installAgentPresets } from "./agent-presets.ts";
-import { type CompactionModelChoice, CompactionModelSelector } from "./model-selector.ts";
+import { type ModelChoice, ModelSelector } from "./model-selector.ts";
+import { registerSessionHistoryTools } from "./session-history-tools.ts";
 import {
 	type CompactionModelSelection,
 	includePreviousFileOperations,
 	loadCompactionModelSelection,
+	loadSessionReadModelSelection,
+	type SessionReadModelSelection,
 	saveCompactionModelSelection,
+	saveSessionReadModelSelection,
 } from "./state.ts";
 
 export const ORACLE_FINDER_TOOL_NAME = "oracle_finder";
@@ -251,9 +255,19 @@ function warn(ctx: ExtensionContext, message: string): void {
 	}
 }
 
+function warnUnavailable(ctx: ExtensionContext, message: string): void {
+	if (ctx.hasUI) {
+		ctx.ui.notify(message, "warning");
+	} else {
+		console.warn(`[pi-suite] ${message}`);
+	}
+}
+
 /** Registers Pi Suite's integrated workflows. */
 export default function piSuite(pi: ExtensionAPI): void {
 	let selection: CompactionModelSelection | undefined;
+	let sessionReadSelection: SessionReadModelSelection | undefined;
+	let sessionReadSelectionError: string | undefined;
 	let completedCustomCompaction:
 		| {
 				summary: string;
@@ -266,14 +280,37 @@ export default function piSuite(pi: ExtensionAPI): void {
 	} catch {
 		selection = undefined;
 	}
+	try {
+		sessionReadSelection = loadSessionReadModelSelection();
+	} catch (error) {
+		sessionReadSelection = undefined;
+		sessionReadSelectionError = error instanceof Error ? error.message : String(error);
+	}
 
-	const reloadSelection = (ctx: ExtensionContext): void => {
+	registerSessionHistoryTools(pi, () => {
+		if (sessionReadSelectionError)
+			throw new Error(`Could not load the session reader model setting: ${sessionReadSelectionError}`);
+		return sessionReadSelection;
+	});
+
+	const reloadSelections = (ctx: ExtensionContext): void => {
 		try {
 			selection = loadCompactionModelSelection();
 		} catch (error) {
 			selection = undefined;
 			const reason = error instanceof Error ? error.message : String(error);
 			warn(ctx, `Could not load the compaction model setting: ${reason}`);
+		}
+		try {
+			sessionReadSelection = loadSessionReadModelSelection();
+			sessionReadSelectionError = undefined;
+		} catch (error) {
+			sessionReadSelection = undefined;
+			sessionReadSelectionError = error instanceof Error ? error.message : String(error);
+			warnUnavailable(
+				ctx,
+				`Could not load the session reader model setting: ${sessionReadSelectionError}. session_read is unavailable until the setting is fixed or reset.`,
+			);
 		}
 	};
 
@@ -283,7 +320,7 @@ export default function piSuite(pi: ExtensionAPI): void {
 			registerOracleFinderTool(pi);
 			registerOracleLibrarianTool(pi);
 		}
-		reloadSelection(ctx);
+		reloadSelections(ctx);
 		if (ctx.mode !== "tui") return;
 
 		if (selection) {
@@ -291,11 +328,22 @@ export default function piSuite(pi: ExtensionAPI): void {
 				`Compaction model: ${selection.provider}/${selection.modelId} (${selection.thinkingLevel} thinking).`,
 				"info",
 			);
-			return;
+		} else {
+			const activeModel = ctx.model ? `${ctx.model.provider}/${ctx.model.id}` : "not selected";
+			ctx.ui.notify(`Compaction model: ${activeModel} (active session model).`, "info");
 		}
 
-		const activeModel = ctx.model ? `${ctx.model.provider}/${ctx.model.id}` : "not selected";
-		ctx.ui.notify(`Compaction model: ${activeModel} (active session model).`, "info");
+		if (sessionReadSelectionError) {
+			// reloadSelections already reported the invalid setting and fail-closed behavior.
+		} else if (sessionReadSelection) {
+			ctx.ui.notify(
+				`Session reader model: ${sessionReadSelection.provider}/${sessionReadSelection.modelId} (${sessionReadSelection.thinkingLevel} thinking).`,
+				"info",
+			);
+		} else {
+			const activeModel = ctx.model ? `${ctx.model.provider}/${ctx.model.id}` : "not selected";
+			ctx.ui.notify(`Session reader model: ${activeModel} (active session model).`, "info");
+		}
 	});
 
 	pi.registerCommand("compaction-model", {
@@ -313,8 +361,12 @@ export default function piSuite(pi: ExtensionAPI): void {
 				return modelLabel(left).localeCompare(modelLabel(right));
 			});
 
-			const choice = await ctx.ui.custom<CompactionModelChoice>(
-				(tui, theme, _keybindings, done) => new CompactionModelSelector(tui, theme, models, done),
+			const choice = await ctx.ui.custom<ModelChoice>(
+				(tui, theme, _keybindings, done) =>
+					new ModelSelector(tui, theme, models, done, {
+						title: "Select Compaction Model",
+						activeDescription: "Follow the conversation model in each session",
+					}),
 			);
 			if (!choice) return;
 
@@ -352,6 +404,73 @@ export default function piSuite(pi: ExtensionAPI): void {
 			}
 			selection = nextSelection;
 			ctx.ui.notify(`Compaction will use ${model.provider}/${model.id} with ${thinkingLevel} thinking.`, "info");
+		},
+	});
+
+	pi.registerCommand("session-read-model", {
+		description: "Select the model and thinking level used to read historical sessions",
+		handler: async (_args, ctx) => {
+			if (ctx.mode !== "tui") {
+				ctx.ui.notify("The session reader model picker requires interactive mode.", "warning");
+				return;
+			}
+
+			const models = [...ctx.modelRegistry.getAvailable()].sort((left, right) => {
+				const leftSelected =
+					left.provider === sessionReadSelection?.provider && left.id === sessionReadSelection.modelId;
+				const rightSelected =
+					right.provider === sessionReadSelection?.provider && right.id === sessionReadSelection.modelId;
+				if (leftSelected !== rightSelected) return leftSelected ? -1 : 1;
+				return modelLabel(left).localeCompare(modelLabel(right));
+			});
+
+			const choice = await ctx.ui.custom<ModelChoice>(
+				(tui, theme, _keybindings, done) =>
+					new ModelSelector(tui, theme, models, done, {
+						title: "Select Session Reader Model",
+						activeDescription: "Use each invoking session's active model",
+					}),
+			);
+			if (!choice) return;
+
+			if (choice.type === "active") {
+				try {
+					saveSessionReadModelSelection(undefined);
+				} catch (error) {
+					const reason = error instanceof Error ? error.message : String(error);
+					ctx.ui.notify(`Could not save the session reader model setting: ${reason}`, "error");
+					return;
+				}
+				sessionReadSelection = undefined;
+				sessionReadSelectionError = undefined;
+				ctx.ui.notify("Historical session reading will use the active session model.", "info");
+				return;
+			}
+
+			const model = choice.model;
+			const supportedLevels = getSupportedThinkingLevels(model);
+			const chosenLevel = await ctx.ui.select("Session reader thinking level", supportedLevels);
+			const thinkingLevel = supportedLevels.find((level) => level === chosenLevel);
+			if (!thinkingLevel) return;
+
+			const nextSelection: SessionReadModelSelection = {
+				provider: model.provider,
+				modelId: model.id,
+				thinkingLevel,
+			};
+			try {
+				saveSessionReadModelSelection(nextSelection);
+			} catch (error) {
+				const reason = error instanceof Error ? error.message : String(error);
+				ctx.ui.notify(`Could not save the session reader model setting: ${reason}`, "error");
+				return;
+			}
+			sessionReadSelection = nextSelection;
+			sessionReadSelectionError = undefined;
+			ctx.ui.notify(
+				`Historical session reading will use ${model.provider}/${model.id} with ${thinkingLevel} thinking.`,
+				"info",
+			);
 		},
 	});
 
@@ -440,10 +559,14 @@ export default function piSuite(pi: ExtensionAPI): void {
 	});
 }
 
+export { SESSION_READ_TOOL_NAME, SESSION_SEARCH_TOOL_NAME } from "./session-history-tools.ts";
 export {
 	type CompactionModelSelection,
 	includePreviousFileOperations,
 	loadCompactionModelSelection,
+	loadSessionReadModelSelection,
 	PI_SUITE_SETTINGS_KEY,
+	type SessionReadModelSelection,
 	saveCompactionModelSelection,
+	saveSessionReadModelSelection,
 } from "./state.ts";
