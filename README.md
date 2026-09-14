@@ -27,6 +27,23 @@ workflow. Verify upgrades from an existing installation, not only clean installs
 
 ### Custom extensions
 
+#### Compact tool display
+
+Use **Tool display** in `/suite` to switch between **Normal** and **Compact**. Normal is the default. Suite saves the
+selection as `toolDisplay` in `~/.pi/agent/pi-suite.json` and restores it after restarts and `/reload`.
+
+Compact display replaces consecutive tool rows with counts such as `read ×3 · bash ×2`. It hides tool arguments and output,
+but keeps pending, running, and failure counts. Assistant messages separate groups even when their thinking is hidden.
+User messages, assistant text, and final answers stay visible. Switching modes also changes existing transcript rows.
+Built-in and extension tools use the same grouping; tools shown in separate extension panels are not changed.
+
+No shortcuts or Pi settings are changed. Ctrl+T still controls thinking independently. Ctrl+O retains its native tool
+expansion behavior, which is visible in Normal mode. This feature does not change tool execution or session data.
+
+The current implementation uses Pi's internal transcript components and supports Pi **0.85.1**. On an unsupported version
+or layout, Suite reports the incompatibility and keeps Normal display. A future Pi update needs a Suite compatibility
+update; do not edit Pi's installed files to enable this feature.
+
 #### CLI tool discovery
 
 Pi Suite detects commonly used CLI tools when a session starts and appends the available commands to the

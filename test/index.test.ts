@@ -485,12 +485,14 @@ describe("Pi Suite extension", () => {
 		});
 
 		expect(select).toHaveBeenNthCalledWith(1, "Pi Suite Configuration", [
+			"Tool display",
 			"Compaction model",
 			"Session reader model",
 			"Session title model",
 			"Setup agents",
 		]);
 		expect(select).toHaveBeenNthCalledWith(2, "Pi Suite Configuration", [
+			"Tool display",
 			"Compaction model",
 			"Session reader model",
 			"Session title model",

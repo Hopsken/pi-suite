@@ -48,6 +48,33 @@ function getConfigPath(): string {
 	return join(getAgentDir(), PI_SUITE_CONFIG_FILE);
 }
 
+export type ToolDisplayMode = "normal" | "compact";
+
+export function loadToolDisplayMode(configPath = getConfigPath()): ToolDisplayMode {
+	if (!existsSync(configPath)) return "normal";
+	const release = acquireConfigLock(configPath);
+	try {
+		const value = parseConfig(readFileSync(configPath, "utf8"), configPath).toolDisplay;
+		if (value === undefined) return "normal";
+		if (value !== "normal" && value !== "compact") throw new Error(`toolDisplay in ${configPath} is invalid.`);
+		return value;
+	} finally {
+		release();
+	}
+}
+
+export function saveToolDisplayMode(mode: ToolDisplayMode, configPath = getConfigPath()): void {
+	mkdirSync(dirname(configPath), { recursive: true });
+	const release = acquireConfigLock(configPath);
+	try {
+		const config = existsSync(configPath) ? parseConfig(readFileSync(configPath, "utf8"), configPath) : {};
+		config.toolDisplay = mode;
+		writeFileSync(configPath, `${JSON.stringify(config, null, 2)}\n`, "utf8");
+	} finally {
+		release();
+	}
+}
+
 function acquireConfigLock(configPath: string): () => void {
 	let lastError: unknown;
 	for (let attempt = 0; attempt < 10; attempt++) {
