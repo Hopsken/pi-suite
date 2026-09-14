@@ -161,8 +161,8 @@ globally:
   `Explore` type or authoritative external source-code research to `Librarian`. It is pinned to GPT-5.6 Sol with high
   thinking.
 
-The command writes to `$PI_CODING_AGENT_DIR/agents` (normally `~/.pi/agent/agents`), preserves existing customized
-definitions, and applies global Subagents defaults of `disableDefaultAgents: true`, `backgroundByDefault: false`,
+The command writes to `$PI_CODING_AGENT_DIR/agents` (normally `~/.pi/agent/agents`), backs up outdated definitions before
+updating them, and applies global Subagents defaults of `disableDefaultAgents: true`, `backgroundByDefault: false`,
 `rememberAgents: false`, `workflowsEnabled: false`, `schedulingEnabled: false`, `maxSubagentDepth: 2`, and
 `outputTranscript: false`. Project settings have higher priority and can override these global values. Run `/reload`
 afterward. Scheduling is disabled, and the `Agent` tool has no `schedule` parameter.
@@ -199,10 +199,14 @@ pi install git:github.com/Hopsken/pi-suite
 ```
 
 Restart Pi after installation or run `/reload`, use **Setup agents** in `/suite` once, then run `/reload` again to use
-`Explore`, `Librarian`, and `Oracle`. Setup preserves existing user presets: `/reload` does not rewrite installed
-definitions. To adopt updated suite frontmatter or prompts, edit an existing definition manually, or back it up, remove the
-Suite definition, and run Setup again. Use `/tools` to manage the active tool set, `/agents` to manage subagents, and
-`/suite` to configure Pi Suite.
+`Explore`, `Librarian`, and `Oracle`. On startup and `/reload`, Suite updates installed presets when their bundled content
+changes, including presets installed before automatic updates were added. Previous files, including custom edits, are saved
+under `$PI_CODING_AGENT_DIR/pi-suite-agent-backups/update-*/`. Reapply any desired edits after a package update; normal
+reloads preserve edits while the bundled content stays the same. Suite tracks applied content hashes in
+`$PI_CODING_AGENT_DIR/.pi-suite-presets.json`. Only global files with Suite preset names are managed; unrelated agents and
+project-local definitions are unchanged. Missing or deleted presets are installed only by **Setup agents**, not on startup.
+Automatic updates do not reset `subagents.json`; use Setup to apply new global defaults. Use `/tools` to manage the active
+tool set, `/agents` to manage subagents, and `/suite` to configure Pi Suite.
 
 To install the curated packages piece by piece instead, use:
 

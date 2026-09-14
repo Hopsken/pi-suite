@@ -20,6 +20,7 @@ import {
 } from "@earendil-works/pi-coding-agent";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { installAgentPresets } from "../src/agent-presets.ts";
+import piSuite from "../src/index.ts";
 import { searchHistoricalSessions } from "../src/session-history/search.ts";
 
 function toolResults(context: Context): string[] {
@@ -90,7 +91,7 @@ describe("Suite agents through the upstream agent loop", () => {
 			cwd: directory,
 			agentDir: directory,
 			settingsManager,
-			extensionFactories: [subagents],
+			extensionFactories: [piSuite, subagents],
 			noExtensions: true,
 			noSkills: true,
 			noPromptTemplates: true,
@@ -184,6 +185,12 @@ describe("Suite agents through the upstream agent loop", () => {
 				return fauxAssistantMessage("Parent received the completed evidence.");
 			};
 			faux.setResponses(Array.from({ length: 15 }, () => answer));
+			// Migrate a pre-tracking installation before Subagents reads its configuration.
+			rmSync(join(directory, ".pi-suite-presets.json"));
+			writeFileSync(
+				join(directory, "agents", `${type}.md`),
+				"---\ndescription: Outdated preset\nrun_in_background: true\npersist_session: true\n---\nOutdated prompt.\n",
+			);
 			const parent = await createParent();
 			const prompt = parent.prompt(`Use ${type} to review retries.`);
 			await childEntered;

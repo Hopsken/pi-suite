@@ -139,8 +139,15 @@ Pi Suite handles delivery through **Setup agents** in `/suite`, which copies eve
 5. Run `pnpm check` and `pnpm build`.
 6. Inspect `pnpm pack --dry-run --json` to confirm the definition is present in the published artifact.
 
-The installer deliberately preserves existing files, so adding or changing a preset cannot overwrite a user's same-named
-definition. `/reload` does not rewrite installed presets. To adopt a suite update, users must update existing frontmatter
-and prompts manually, or back up and remove the Suite definitions before running Setup again. Setup merges the suite's
-global defaults into `subagents.json` without replacing unrelated settings. If upstream later adds a stable registration API
-or package-level agent directories, prefer that mechanism over copying files.
+Suite updates already-installed global presets during extension activation, before the bundled Subagents extension reads
+them. Startup and `/reload` replace a preset only when its bundled content hash differs from the revision recorded in
+`getAgentDir()/.pi-suite-presets.json`. Existing same-named presets without a recorded revision are migrated too. Every
+replacement first saves the old file under `getAgentDir()/pi-suite-agent-backups/update-*/`, outside agent discovery paths;
+if backup fails, the old preset remains untouched. Reapply desired custom edits after an update. Normal reloads preserve
+those edits until the bundled content changes again.
+
+Automatic updates leave unrelated agents, project-local definitions, and `subagents.json` unchanged. They do not install
+missing or deleted presets. Setup installs missing presets, updates old ones, and merges the suite's global defaults into
+`subagents.json` without replacing unrelated settings. Keep Suite before Subagents in the package extension list so updated
+presets take effect on the same startup or reload. If upstream later adds a stable registration API or package-level agent
+directories, prefer that mechanism over copying files.

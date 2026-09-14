@@ -1,4 +1,4 @@
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fauxAssistantMessage } from "@earendil-works/pi-ai";
@@ -207,7 +207,7 @@ describe("Pi Suite extension", () => {
 			maxSubagentDepth: 2,
 		});
 		expect(notify).toHaveBeenCalledWith(
-			"Installed 3 presets. Suite presets use blocking calls and disable session retention. Upstream defaults and workflows are disabled. Run /reload; existing definitions must be updated manually.",
+			"Installed 3 presets. Suite presets use blocking calls and disable session retention. Upstream defaults, workflows, and schedules are disabled. Run /reload; installed Suite presets update automatically when bundled content changes.",
 			"info",
 		);
 
@@ -251,9 +251,74 @@ describe("Pi Suite extension", () => {
 			maxSubagentDepth: 2,
 		});
 		expect(notify).toHaveBeenCalledWith(
-			"All presets were already installed. Left 3 existing definitions unchanged. Suite presets use blocking calls and disable session retention. Upstream defaults and workflows are disabled. Run /reload; existing definitions must be updated manually.",
+			"All presets were already installed. Left 3 existing definitions unchanged. Suite presets use blocking calls and disable session retention. Upstream defaults, workflows, and schedules are disabled. Run /reload; installed Suite presets update automatically when bundled content changes.",
 			"info",
 		);
+	});
+
+	test("activation updates legacy presets with backups, but preserves edits until the next bundled revision", () => {
+		createExtensionApi();
+		expect(readdirSync(agentDirectory)).toEqual([]);
+		const agents = join(agentDirectory, "agents");
+		mkdirSync(agents);
+		const oracle = join(agents, "Oracle.md");
+		const custom = join(agents, "Custom.md");
+		const legacy = "---\ndescription: Old Oracle\n---\nUse oracle_finder.\n";
+		writeFileSync(oracle, legacy);
+		writeFileSync(custom, "Unrelated agent.");
+		const settings = join(agentDirectory, "subagents.json");
+		writeFileSync(settings, '{"maxConcurrent":3}');
+
+		createExtensionApi();
+		const bundled = readFileSync(new URL("../presets/agents/Oracle.md", import.meta.url), "utf8");
+		expect(readFileSync(oracle, "utf8")).toBe(bundled);
+		expect(readdirSync(agents).sort()).toEqual(["Custom.md", "Oracle.md"]);
+		expect(readFileSync(custom, "utf8")).toBe("Unrelated agent.");
+		expect(readFileSync(settings, "utf8")).toBe('{"maxConcurrent":3}');
+		const backups = join(agentDirectory, "pi-suite-agent-backups");
+		const firstBackup = readdirSync(backups)[0]!;
+		expect(readdirSync(backups)).toHaveLength(1);
+		expect(readFileSync(join(backups, firstBackup, "Oracle.md"), "utf8")).toBe(legacy);
+
+		const customized = bundled.replace("persist_session: false", "persist_session: true");
+		writeFileSync(oracle, customized);
+		createExtensionApi();
+		expect(readFileSync(oracle, "utf8")).toBe(customized);
+		expect(readdirSync(backups)).toEqual([firstBackup]);
+
+		// Simulate an installed revision from an earlier package release.
+		writeFileSync(join(agentDirectory, ".pi-suite-presets.json"), '{"Oracle.md":"older-bundled-revision"}');
+		createExtensionApi();
+		expect(readFileSync(oracle, "utf8")).toBe(bundled);
+		const secondBackup = readdirSync(backups).find((name) => name !== firstBackup)!;
+		expect(readFileSync(join(backups, secondBackup, "Oracle.md"), "utf8")).toBe(customized);
+		expect(readFileSync(join(backups, firstBackup, "Oracle.md"), "utf8")).toBe(legacy);
+		createExtensionApi();
+		expect(readdirSync(backups)).toHaveLength(2);
+		rmSync(oracle);
+		createExtensionApi();
+		expect(existsSync(oracle)).toBe(false);
+	});
+
+	test("a failed backup leaves the preset untouched and reports the update failure", async () => {
+		mkdirSync(join(agentDirectory, "agents"));
+		const oracle = join(agentDirectory, "agents", "Oracle.md");
+		writeFileSync(oracle, "Old Oracle with custom instructions.");
+		writeFileSync(join(agentDirectory, "pi-suite-agent-backups"), "Blocks backup directory creation.");
+		const extension = createExtensionApi();
+		expect(readFileSync(oracle, "utf8")).toBe("Old Oracle with custom instructions.");
+		expect(existsSync(join(agentDirectory, ".pi-suite-presets.json"))).toBe(false);
+		const notify = vi.fn();
+		await extension.handlers.get("session_start")?.(
+			{},
+			{
+				mode: "print",
+				hasUI: true,
+				sessionManager: { getBranch: () => [] },
+				ui: { notify },
+			},
+		);
+		expect(notify).toHaveBeenCalledWith(expect.stringContaining("Could not update Suite agent presets:"), "warning");
 	});
 
 	test("registers session tools in both main and Oracle sessions", async () => {

@@ -1,6 +1,6 @@
 import { clampThinkingLevel, getSupportedThinkingLevels } from "@earendil-works/pi-ai";
 import { compact, type ExtensionAPI, type ExtensionContext } from "@earendil-works/pi-coding-agent";
-import { installAgentPresets } from "./agent-presets.ts";
+import { installAgentPresets, updateAgentPresets } from "./agent-presets.ts";
 import { registerAvailableCliToolsPrompt } from "./available-cli-tools.ts";
 import { type ModelChoice, ModelSelector } from "./model-selector.ts";
 import { registerSessionHistoryTools } from "./session-history-tools.ts";
@@ -46,6 +46,17 @@ function warnUnavailable(ctx: ExtensionContext, message: string): void {
 
 /** Registers Pi Suite's integrated workflows. */
 export default function piSuite(pi: ExtensionAPI): void {
+	// The package loads Suite before Subagents, which reads presets during activation.
+	let presetUpdateNotice: string | undefined;
+	let presetUpdateFailed = false;
+	try {
+		const { updated } = updateAgentPresets();
+		if (updated.length > 0)
+			presetUpdateNotice = `Updated Suite presets: ${updated.join(", ")}. Previous files are in pi-suite-agent-backups in your Pi agent directory.`;
+	} catch (error) {
+		presetUpdateFailed = true;
+		presetUpdateNotice = `Could not update Suite agent presets: ${errorMessage(error)}`;
+	}
 	let selection: CompactionModelSelection | undefined;
 	let sessionReadSelection: SessionReadModelSelection | undefined;
 	let sessionTitleSelection: SessionTitleModelSelection | undefined;
@@ -110,6 +121,11 @@ export default function piSuite(pi: ExtensionAPI): void {
 	};
 
 	pi.on("session_start", (_event, ctx) => {
+		if (presetUpdateNotice) {
+			if (presetUpdateFailed) warnUnavailable(ctx, presetUpdateNotice);
+			else if (ctx.hasUI) ctx.ui.notify(presetUpdateNotice, "info");
+			presetUpdateNotice = undefined;
+		}
 		completedCustomCompaction = undefined;
 		attemptedSessionTitle = ctx.sessionManager
 			.getBranch()
@@ -326,8 +342,12 @@ export default function piSuite(pi: ExtensionAPI): void {
 				result.skipped.length > 0
 					? ` Left ${result.skipped.length} existing ${result.skipped.length === 1 ? "definition" : "definitions"} unchanged.`
 					: "";
+			const updated =
+				result.updated.length > 0
+					? ` Updated ${result.updated.length} presets. Previous files are in pi-suite-agent-backups in your Pi agent directory.`
+					: "";
 			ctx.ui.notify(
-				`${installed}${skipped} Suite presets use blocking calls and disable session retention. Upstream defaults and workflows are disabled. Run /reload; existing definitions must be updated manually.`,
+				`${installed}${updated}${skipped} Suite presets use blocking calls and disable session retention. Upstream defaults, workflows, and schedules are disabled. Run /reload; installed Suite presets update automatically when bundled content changes.`,
 				"info",
 			);
 		} catch (error) {
