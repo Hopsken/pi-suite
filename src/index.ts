@@ -1,8 +1,6 @@
-import { randomUUID } from "node:crypto";
 import { clampThinkingLevel, getSupportedThinkingLevels } from "@earendil-works/pi-ai";
 import { compact, type ExtensionAPI, type ExtensionContext } from "@earendil-works/pi-coding-agent";
-import { Type } from "typebox";
-import { installAgentPresets } from "./agent-presets.ts";
+import { installAgentPresets, updateAgentPresets } from "./agent-presets.ts";
 import { registerAvailableCliToolsPrompt } from "./available-cli-tools.ts";
 import { type ModelChoice, ModelSelector } from "./model-selector.ts";
 import { registerSessionHistoryTools } from "./session-history-tools.ts";
@@ -21,231 +19,8 @@ import {
 } from "./state.ts";
 import { registerToolsSelector } from "./tools-selector.ts";
 
-export const ORACLE_FINDER_TOOL_NAME = "oracle_finder";
-export const ORACLE_LIBRARIAN_TOOL_NAME = "oracle_librarian";
-
-const ORACLE_ACTIVE_AGENT_TAG = '<active_agent name="Oracle"/>';
-const SUBAGENT_RPC_TIMEOUT_MS = 5_000;
-
-type SubagentEvent = {
-	id: string;
-	result?: string;
-	error?: string;
-	status?: string;
-	toolUses?: number;
-	durationMs?: number;
-	tokens?: { input: number; output: number; total: number };
-};
-
-type SubagentRpcReply = { success: true; data?: { id?: unknown } } | { success: false; error?: unknown };
-
-function asSubagentEvent(value: unknown): SubagentEvent | undefined {
-	if (typeof value !== "object" || value === null) return undefined;
-	const event = value as Record<string, unknown>;
-	if (typeof event.id !== "string") return undefined;
-	return event as SubagentEvent;
-}
-
 function errorMessage(value: unknown): string {
 	return value instanceof Error ? value.message : String(value);
-}
-
-function runOracleSubagentResearch(
-	pi: ExtensionAPI,
-	params: { prompt: string; description: string },
-	signal: AbortSignal | undefined,
-	type: "Explore" | "Librarian",
-): Promise<{
-	content: [{ type: "text"; text: string }];
-	details: Omit<SubagentEvent, "result" | "error">;
-}> {
-	return new Promise((resolve, reject) => {
-		const requestId = randomUUID();
-		const replyChannel = `subagents:rpc:spawn:reply:${requestId}`;
-		const pendingTerminalEvents = new Map<string, { event: SubagentEvent; failed: boolean }>();
-		let agentId: string | undefined;
-		let aborted = signal?.aborted ?? false;
-		let settled = false;
-		let replyTimer: ReturnType<typeof setTimeout>;
-
-		let unsubscribeReply = () => {};
-		const unsubscribeCompleted = pi.events.on("subagents:completed", (value) => {
-			handleTerminalEvent(value, false);
-		});
-		const unsubscribeFailed = pi.events.on("subagents:failed", (value) => {
-			handleTerminalEvent(value, true);
-		});
-
-		const cleanup = () => {
-			clearTimeout(replyTimer);
-			unsubscribeReply();
-			unsubscribeCompleted();
-			unsubscribeFailed();
-			signal?.removeEventListener("abort", onAbort);
-		};
-
-		const finish = (event: SubagentEvent, failed: boolean) => {
-			if (settled) return;
-			settled = true;
-			cleanup();
-			if (failed) {
-				reject(new Error(event.error || `Research subagent stopped with status ${event.status ?? "unknown"}.`));
-				return;
-			}
-			resolve({
-				content: [{ type: "text", text: event.result?.trim() || "Research subagent returned no output." }],
-				details: {
-					id: event.id,
-					status: event.status,
-					toolUses: event.toolUses,
-					durationMs: event.durationMs,
-					tokens: event.tokens,
-				},
-			});
-		};
-
-		function handleTerminalEvent(value: unknown, failed: boolean): void {
-			const event = asSubagentEvent(value);
-			if (!event) return;
-			if (!agentId) {
-				pendingTerminalEvents.set(event.id, { event, failed });
-				return;
-			}
-			if (event.id === agentId) finish(event, failed);
-		}
-
-		const stopAgent = (id: string) => {
-			pi.events.emit("subagents:rpc:stop", { requestId: randomUUID(), agentId: id });
-		};
-
-		function onAbort(): void {
-			aborted = true;
-			if (!agentId) return;
-			stopAgent(agentId);
-			if (!settled) {
-				settled = true;
-				cleanup();
-				reject(signal?.reason ?? new Error("Oracle research was cancelled."));
-			}
-		}
-
-		unsubscribeReply = pi.events.on(replyChannel, (value) => {
-			const reply = value as SubagentRpcReply;
-			if (!reply || reply.success !== true) {
-				if (!settled) {
-					settled = true;
-					cleanup();
-					reject(
-						new Error(`Could not start the research subagent: ${errorMessage(reply?.error ?? "unknown error")}`),
-					);
-				}
-				return;
-			}
-
-			const id = reply.data?.id;
-			if (typeof id !== "string") {
-				if (!settled) {
-					settled = true;
-					cleanup();
-					reject(new Error("Could not start the research subagent: the RPC response contained no agent ID."));
-				}
-				return;
-			}
-
-			agentId = id;
-			clearTimeout(replyTimer);
-			unsubscribeReply();
-			if (aborted) {
-				stopAgent(id);
-				if (!settled) {
-					settled = true;
-					cleanup();
-					reject(signal?.reason ?? new Error("Oracle research was cancelled."));
-				}
-				return;
-			}
-
-			const terminal = pendingTerminalEvents.get(id);
-			if (terminal) finish(terminal.event, terminal.failed);
-		});
-
-		replyTimer = setTimeout(() => {
-			if (settled) return;
-			settled = true;
-			cleanup();
-			reject(
-				aborted
-					? (signal?.reason ?? new Error("Oracle research was cancelled."))
-					: new Error("Could not start the research subagent: pi-subagents did not answer the spawn request."),
-			);
-		}, SUBAGENT_RPC_TIMEOUT_MS);
-
-		signal?.addEventListener("abort", onAbort, { once: true });
-		pi.events.emit("subagents:rpc:spawn", {
-			requestId,
-			type,
-			prompt: params.prompt,
-			options: {
-				description: params.description,
-				isBackground: false,
-				inheritContext: false,
-			},
-		});
-	});
-}
-
-function runOracleFinder(
-	pi: ExtensionAPI,
-	params: { prompt: string; description: string },
-	signal: AbortSignal | undefined,
-) {
-	return runOracleSubagentResearch(pi, params, signal, "Explore");
-}
-
-function runOracleLibrarian(
-	pi: ExtensionAPI,
-	params: { prompt: string; description: string },
-	signal: AbortSignal | undefined,
-) {
-	return runOracleSubagentResearch(pi, params, signal, "Librarian");
-}
-
-function registerOracleFinderTool(pi: ExtensionAPI): void {
-	pi.registerTool({
-		name: ORACLE_FINDER_TOOL_NAME,
-		label: "Oracle Finder",
-		description:
-			"Delegate one focused, read-only local codebase discovery question to the Explore subagent and wait for its distilled findings. Intended for Oracle when multi-step workspace research would otherwise consume its advisory context. Do not delegate external repository research, implementation, final judgment, or another Oracle review.",
-		parameters: Type.Object({
-			prompt: Type.String({
-				description:
-					"A self-contained engineering discovery request with concrete success criteria, likely directories or artifacts, and the evidence to return.",
-			}),
-			description: Type.String({
-				description: "A short 3-5 word description of the research task.",
-			}),
-		}),
-		execute: async (_toolCallId, params, signal) => runOracleFinder(pi, params, signal),
-	});
-}
-
-function registerOracleLibrarianTool(pi: ExtensionAPI): void {
-	pi.registerTool({
-		name: ORACLE_LIBRARIAN_TOOL_NAME,
-		label: "Oracle Librarian",
-		description:
-			"Delegate one focused, read-only external source-code research question to the Librarian subagent and wait for its evidence-backed answer. Intended for Oracle when authoritative dependency or remote-repository research would otherwise consume its advisory context. Do not delegate local workspace discovery, implementation, or final judgment.",
-		parameters: Type.Object({
-			prompt: Type.String({
-				description:
-					"A self-contained external codebase research request naming the repository or project when known, the relevant ref or version, the exact question, and the evidence or immutable source links to return.",
-			}),
-			description: Type.String({
-				description: "A short 3-5 word description of the external research task.",
-			}),
-		}),
-		execute: async (_toolCallId, params, signal) => runOracleLibrarian(pi, params, signal),
-	});
 }
 
 function modelLabel(model: { provider: string; id: string; name: string }): string {
@@ -271,6 +46,17 @@ function warnUnavailable(ctx: ExtensionContext, message: string): void {
 
 /** Registers Pi Suite's integrated workflows. */
 export default function piSuite(pi: ExtensionAPI): void {
+	// The package loads Suite before Subagents, which reads presets during activation.
+	let presetUpdateNotice: string | undefined;
+	let presetUpdateFailed = false;
+	try {
+		const { updated } = updateAgentPresets();
+		if (updated.length > 0)
+			presetUpdateNotice = `Updated Suite presets: ${updated.join(", ")}. Previous files are in pi-suite-agent-backups in your Pi agent directory.`;
+	} catch (error) {
+		presetUpdateFailed = true;
+		presetUpdateNotice = `Could not update Suite agent presets: ${errorMessage(error)}`;
+	}
 	let selection: CompactionModelSelection | undefined;
 	let sessionReadSelection: SessionReadModelSelection | undefined;
 	let sessionTitleSelection: SessionTitleModelSelection | undefined;
@@ -335,14 +121,15 @@ export default function piSuite(pi: ExtensionAPI): void {
 	};
 
 	pi.on("session_start", (_event, ctx) => {
+		if (presetUpdateNotice) {
+			if (presetUpdateFailed) warnUnavailable(ctx, presetUpdateNotice);
+			else if (ctx.hasUI) ctx.ui.notify(presetUpdateNotice, "info");
+			presetUpdateNotice = undefined;
+		}
 		completedCustomCompaction = undefined;
 		attemptedSessionTitle = ctx.sessionManager
 			.getBranch()
 			.some((entry) => entry.type === "message" && entry.message.role === "assistant");
-		if (ctx.getSystemPrompt().startsWith(ORACLE_ACTIVE_AGENT_TAG)) {
-			registerOracleFinderTool(pi);
-			registerOracleLibrarianTool(pi);
-		}
 		reloadSelections(ctx);
 		if (ctx.mode !== "tui") return;
 
@@ -555,8 +342,12 @@ export default function piSuite(pi: ExtensionAPI): void {
 				result.skipped.length > 0
 					? ` Left ${result.skipped.length} existing ${result.skipped.length === 1 ? "definition" : "definitions"} unchanged.`
 					: "";
+			const updated =
+				result.updated.length > 0
+					? ` Updated ${result.updated.length} presets. Previous files are in pi-suite-agent-backups in your Pi agent directory.`
+					: "";
 			ctx.ui.notify(
-				`${installed}${skipped} Upstream default agents are disabled globally. Run /reload to use the presets.`,
+				`${installed}${updated}${skipped} Suite presets use blocking calls and disable session retention. Upstream defaults, workflows, and schedules are disabled. Run /reload; installed Suite presets update automatically when bundled content changes.`,
 				"info",
 			);
 		} catch (error) {
@@ -627,11 +418,17 @@ export default function piSuite(pi: ExtensionAPI): void {
 		try {
 			const preparation = includePreviousFileOperations(event.preparation, event.branchEntries);
 			const thinkingLevel = clampThinkingLevel(model, currentSelection.thinkingLevel);
+			// The compatibility compaction API accepts only headers that have not been deleted.
+			const headers = auth.headers
+				? Object.fromEntries(
+						Object.entries(auth.headers).filter((entry): entry is [string, string] => entry[1] !== null),
+					)
+				: undefined;
 			const result = await compact(
 				preparation,
 				model,
 				auth.apiKey,
-				auth.headers,
+				headers,
 				event.customInstructions,
 				event.signal,
 				thinkingLevel,
