@@ -16,6 +16,17 @@ import { getAgentDir } from "@earendil-works/pi-coding-agent";
 
 const presetDirectory = fileURLToPath(new URL("../presets/agents", import.meta.url));
 
+const settingsVersion = 1;
+const suiteSettings = {
+	disableDefaultAgents: true,
+	backgroundByDefault: false,
+	rememberAgents: false,
+	outputTranscript: false,
+	workflowsEnabled: false,
+	schedulingEnabled: false,
+	maxSubagentDepth: 2,
+};
+
 type Settings = Record<string, unknown>;
 
 export type AgentPresetInstallResult = {
@@ -34,7 +45,7 @@ function loadSettings(path: string): Settings {
 	return parsed as Settings;
 }
 
-/** Updates installed presets once per bundled revision; normal reloads preserve user edits. */
+/** Updates installed presets and migrates settings once; normal reloads preserve user edits. */
 export function updateAgentPresets(installMissing = false): AgentPresetInstallResult {
 	const agentDirectory = getAgentDir();
 	const agentsDirectory = join(agentDirectory, "agents");
@@ -46,6 +57,15 @@ export function updateAgentPresets(installMissing = false): AgentPresetInstallRe
 		.sort();
 
 	if (presets.length === 0) throw new Error("Pi Suite does not contain any agent presets.");
+
+	const hasInstalledPresets = presets.some(
+		(name) => existsSync(join(agentsDirectory, name)) || typeof revisions[name] === "string",
+	);
+	const migrateSettings =
+		installMissing || (hasInstalledPresets && Number(revisions.settingsVersion ?? 0) < settingsVersion);
+	const settingsPath = join(agentDirectory, "subagents.json");
+	// Validate before changing presets. A failed read must not mark migration complete.
+	const settings = migrateSettings ? loadSettings(settingsPath) : undefined;
 
 	const installed: string[] = [];
 	const updated: string[] = [];
@@ -79,33 +99,17 @@ export function updateAgentPresets(installMissing = false): AgentPresetInstallRe
 		}
 	}
 
+	if (migrateSettings) {
+		writeFileSync(settingsPath, JSON.stringify({ ...settings, ...suiteSettings }, null, 2), "utf8");
+		revisions.settingsVersion = settingsVersion;
+		stateChanged = true;
+	}
+
 	if (stateChanged) writeFileSync(statePath, JSON.stringify(revisions, null, 2), "utf8");
 	return { installed, updated, skipped };
 }
 
 /** Installs missing presets, updates old revisions, and applies Suite settings. */
 export function installAgentPresets(): AgentPresetInstallResult {
-	const settingsPath = join(getAgentDir(), "subagents.json");
-	const settings = loadSettings(settingsPath);
-	const result = updateAgentPresets(true);
-	writeFileSync(
-		settingsPath,
-		JSON.stringify(
-			{
-				...settings,
-				disableDefaultAgents: true,
-				backgroundByDefault: false,
-				rememberAgents: false,
-				outputTranscript: false,
-				workflowsEnabled: false,
-				schedulingEnabled: false,
-				maxSubagentDepth: 2,
-			},
-			null,
-			2,
-		),
-		"utf8",
-	);
-
-	return result;
+	return updateAgentPresets(true);
 }

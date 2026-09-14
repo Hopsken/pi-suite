@@ -188,6 +188,10 @@ describe("Suite agents through the upstream agent loop", () => {
 			// Migrate a pre-tracking installation before Subagents reads its configuration.
 			rmSync(join(directory, ".pi-suite-presets.json"));
 			writeFileSync(
+				join(directory, "subagents.json"),
+				JSON.stringify({ workflowsEnabled: true, schedulingEnabled: true, maxSubagentDepth: 1 }),
+			);
+			writeFileSync(
 				join(directory, "agents", `${type}.md`),
 				"---\ndescription: Outdated preset\nrun_in_background: true\npersist_session: true\n---\nOutdated prompt.\n",
 			);

@@ -11,6 +11,18 @@ An opinionated [Pi coding agent](https://pi.dev) distribution curated to provide
 The suite favors strong defaults, low configuration overhead, and polished interactive workflows. New dependencies are
 included only when they materially improve the coding-agent experience.
 
+## Product principle
+
+Pi Suite is one opinionated product, not a collection of extensions that users must configure separately. The normal
+upgrade path is **update the `pi-suite` package, then run `/reload` in Pi**. Suite owns dependency configuration,
+compatibility changes, preset updates, and required settings migrations. Routine upgrades must not require users to learn
+upstream extension settings, edit their configuration files, or rerun setup commands.
+
+Apply required migrations automatically before the affected extension loads. Preserve unrelated settings and user data;
+back up replaced custom files, and report failures clearly. Run migrations once so normal reloads do not reset later user
+choices. Expose intentional product choices through `/suite` instead of making dependency settings part of the normal
+workflow. Verify upgrades from an existing installation, not only clean installs.
+
 ## Included
 
 ### Custom extensions
@@ -205,8 +217,10 @@ under `$PI_CODING_AGENT_DIR/pi-suite-agent-backups/update-*/`. Reapply any desir
 reloads preserve edits while the bundled content stays the same. Suite tracks applied content hashes in
 `$PI_CODING_AGENT_DIR/.pi-suite-presets.json`. Only global files with Suite preset names are managed; unrelated agents and
 project-local definitions are unchanged. Missing or deleted presets are installed only by **Setup agents**, not on startup.
-Automatic updates do not reset `subagents.json`; use Setup to apply new global defaults. Use `/tools` to manage the active
-tool set, `/agents` to manage subagents, and `/suite` to configure Pi Suite.
+Existing Suite installations also receive a one-time migration of `subagents.json` to the global defaults listed above,
+before Subagents loads. Unrelated settings are preserved. The migration version is recorded alongside preset hashes;
+later reloads and preset updates preserve your subsequent settings changes. Setup explicitly reapplies the defaults.
+Use `/tools` to manage the active tool set, `/agents` to manage subagents, and `/suite` to configure Pi Suite.
 
 To install the curated packages piece by piece instead, use:
 

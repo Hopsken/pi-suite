@@ -146,8 +146,13 @@ replacement first saves the old file under `getAgentDir()/pi-suite-agent-backups
 if backup fails, the old preset remains untouched. Reapply desired custom edits after an update. Normal reloads preserve
 those edits until the bundled content changes again.
 
-Automatic updates leave unrelated agents, project-local definitions, and `subagents.json` unchanged. They do not install
-missing or deleted presets. Setup installs missing presets, updates old ones, and merges the suite's global defaults into
-`subagents.json` without replacing unrelated settings. Keep Suite before Subagents in the package extension list so updated
-presets take effect on the same startup or reload. If upstream later adds a stable registration API or package-level agent
-directories, prefer that mechanism over copying files.
+Automatic updates leave unrelated agents and project-local definitions unchanged. They do not install missing or deleted
+presets. Existing Suite installations also receive a one-time migration of `subagents.json` to the defaults listed above.
+The `settingsVersion` in `.pi-suite-presets.json` is recorded only after the settings write succeeds. Unrelated settings and
+later user changes are preserved; invalid JSON is not overwritten and migration retries after repair. Bump the settings
+migration version only when a new settings migration is needed, independently of preset content changes.
+
+Setup installs missing presets, updates old ones, and explicitly reapplies the suite's global defaults without replacing
+unrelated settings. Keep Suite before Subagents in the package extension list so updated presets and settings take effect
+on the same startup or reload. If upstream later adds a stable registration API or package-level agent directories, prefer
+that mechanism over copying files.

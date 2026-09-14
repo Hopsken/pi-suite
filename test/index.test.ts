@@ -274,7 +274,7 @@ describe("Pi Suite extension", () => {
 		expect(readFileSync(oracle, "utf8")).toBe(bundled);
 		expect(readdirSync(agents).sort()).toEqual(["Custom.md", "Oracle.md"]);
 		expect(readFileSync(custom, "utf8")).toBe("Unrelated agent.");
-		expect(readFileSync(settings, "utf8")).toBe('{"maxConcurrent":3}');
+		expect(JSON.parse(readFileSync(settings, "utf8"))).toMatchObject({ maxConcurrent: 3, schedulingEnabled: false });
 		const backups = join(agentDirectory, "pi-suite-agent-backups");
 		const firstBackup = readdirSync(backups)[0]!;
 		expect(readdirSync(backups)).toHaveLength(1);
@@ -298,6 +298,73 @@ describe("Pi Suite extension", () => {
 		rmSync(oracle);
 		createExtensionApi();
 		expect(existsSync(oracle)).toBe(false);
+	});
+
+	test("settings migrate independently of preset changes and preserve later user choices", () => {
+		mkdirSync(join(agentDirectory, "agents"));
+		const oracle = join(agentDirectory, "agents", "Oracle.md");
+		writeFileSync(oracle, readFileSync(new URL("../presets/agents/Oracle.md", import.meta.url)));
+		createExtensionApi();
+		const statePath = join(agentDirectory, ".pi-suite-presets.json");
+		const revisions = JSON.parse(readFileSync(statePath, "utf8"));
+		delete revisions.settingsVersion;
+		writeFileSync(statePath, JSON.stringify(revisions));
+		const settingsPath = join(agentDirectory, "subagents.json");
+		writeFileSync(
+			settingsPath,
+			JSON.stringify({
+				maxConcurrent: 7,
+				custom: { enabled: true },
+				disableDefaultAgents: false,
+				backgroundByDefault: true,
+				rememberAgents: true,
+				outputTranscript: true,
+				workflowsEnabled: true,
+				schedulingEnabled: true,
+				maxSubagentDepth: 1,
+			}),
+		);
+		createExtensionApi();
+		const migrated = JSON.parse(readFileSync(settingsPath, "utf8"));
+		expect(migrated).toEqual({
+			maxConcurrent: 7,
+			custom: { enabled: true },
+			disableDefaultAgents: true,
+			backgroundByDefault: false,
+			rememberAgents: false,
+			outputTranscript: false,
+			workflowsEnabled: false,
+			schedulingEnabled: false,
+			maxSubagentDepth: 2,
+		});
+		const edited = JSON.stringify({ ...migrated, rememberAgents: true, maxSubagentDepth: 4 });
+		writeFileSync(settingsPath, edited);
+		createExtensionApi();
+		expect(readFileSync(settingsPath, "utf8")).toBe(edited);
+		const migratedState = JSON.parse(readFileSync(statePath, "utf8"));
+		writeFileSync(statePath, JSON.stringify({ ...migratedState, "Oracle.md": "older-revision" }));
+		createExtensionApi();
+		expect(readFileSync(settingsPath, "utf8")).toBe(edited);
+	});
+
+	test("invalid settings are not overwritten or marked migrated and retry after repair", () => {
+		mkdirSync(join(agentDirectory, "agents"));
+		writeFileSync(join(agentDirectory, "agents", "Oracle.md"), "Old Oracle.");
+		const settingsPath = join(agentDirectory, "subagents.json");
+		writeFileSync(settingsPath, "{invalid");
+		createExtensionApi();
+		expect(readFileSync(settingsPath, "utf8")).toBe("{invalid");
+		expect(existsSync(join(agentDirectory, ".pi-suite-presets.json"))).toBe(false);
+		writeFileSync(settingsPath, '{"maxConcurrent":5}');
+		createExtensionApi();
+		expect(JSON.parse(readFileSync(settingsPath, "utf8"))).toMatchObject({
+			maxConcurrent: 5,
+			schedulingEnabled: false,
+		});
+		expect(JSON.parse(readFileSync(join(agentDirectory, ".pi-suite-presets.json"), "utf8"))).toHaveProperty(
+			"settingsVersion",
+			1,
+		);
 	});
 
 	test("a failed backup leaves the preset untouched and reports the update failure", async () => {
