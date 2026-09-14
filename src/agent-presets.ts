@@ -47,9 +47,24 @@ export function installAgentPresets(): AgentPresetInstallResult {
 		installed.push(name);
 	}
 
-	if (settings.disableDefaultAgents !== true) {
-		writeFileSync(settingsPath, JSON.stringify({ ...settings, disableDefaultAgents: true }, null, 2), "utf8");
-	}
+	writeFileSync(
+		settingsPath,
+		JSON.stringify(
+			{
+				...settings,
+				disableDefaultAgents: true,
+				backgroundByDefault: false,
+				rememberAgents: false,
+				outputTranscript: false,
+				workflowsEnabled: false,
+				schedulingEnabled: false,
+				maxSubagentDepth: 2,
+			},
+			null,
+			2,
+		),
+		"utf8",
+	);
 
 	return { installed, skipped };
 }

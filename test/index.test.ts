@@ -4,24 +4,16 @@ import { join } from "node:path";
 import { fauxAssistantMessage } from "@earendil-works/pi-ai";
 import { type FauxProviderRegistration, registerFauxProvider } from "@earendil-works/pi-ai/compat";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
-import piSuite, {
-	ORACLE_FINDER_TOOL_NAME,
-	ORACLE_LIBRARIAN_TOOL_NAME,
-	SESSION_READ_TOOL_NAME,
-	SESSION_SEARCH_TOOL_NAME,
-} from "../src/index.ts";
+import piSuite, { SESSION_READ_TOOL_NAME, SESSION_SEARCH_TOOL_NAME } from "../src/index.ts";
 import { normalizeRepositoryRemote, repositoryMatches } from "../src/session-history/repository.ts";
 
 type Handler = (event: any, context: any) => any;
 type ToolHandler = (...args: any[]) => any;
 
-const ORACLE_SYSTEM_PROMPT = '<active_agent name="Oracle"/>\n\nYou are Oracle.';
-
 function createExtensionApi() {
 	const commands = new Map<string, { handler: Handler }>();
 	const handlers = new Map<string, Handler>();
 	const tools = new Map<string, { execute: ToolHandler }>();
-	const eventHandlers = new Map<string, Set<(data: unknown) => void>>();
 	const setSessionName = vi.fn();
 	const appendEntry = vi.fn();
 	const exec = vi.fn().mockResolvedValue({ stdout: "", stderr: "", code: 1, killed: false });
@@ -46,36 +38,10 @@ function createExtensionApi() {
 		getActiveTools: vi.fn(() => Array.from(tools.keys())),
 		getAllTools: vi.fn(() => Array.from(tools.keys(), (name) => ({ name }))),
 		setActiveTools: vi.fn(),
-		events: {
-			on(channel: string, handler: (data: unknown) => void) {
-				const listeners = eventHandlers.get(channel) ?? new Set();
-				listeners.add(handler);
-				eventHandlers.set(channel, listeners);
-				return () => listeners.delete(handler);
-			},
-			emit(channel: string, data: unknown) {
-				for (const handler of eventHandlers.get(channel) ?? []) handler(data);
-			},
-		},
 	};
 
 	piSuite(pi as never);
-	return { commands, handlers, tools, events: pi.events, setSessionName, appendEntry, exec };
-}
-
-async function createOracleExtensionApi() {
-	const extension = createExtensionApi();
-	await extension.handlers.get("session_start")?.(
-		{ reason: "startup" },
-		{
-			mode: "print",
-			hasUI: false,
-			getSystemPrompt: () => ORACLE_SYSTEM_PROMPT,
-			sessionManager: { getBranch: () => [] },
-			ui: { notify: vi.fn() },
-		},
-	);
-	return extension;
+	return { commands, handlers, tools, setSessionName, appendEntry, exec };
 }
 
 describe("Pi Suite extension", () => {
@@ -200,6 +166,9 @@ describe("Pi Suite extension", () => {
 		expect(explorePreset).toContain("model: openai-codex/gpt-5.6-terra");
 		expect(explorePreset).toContain("thinking: low");
 		expect(explorePreset).toContain("max_turns: 50");
+		expect(explorePreset).toContain("run_in_background: false");
+		expect(explorePreset).toContain("persist_session: false");
+		expect(explorePreset).toContain("output_transcript: false");
 		expect(explorePreset).toContain("workspace-relative file paths and line numbers or ranges");
 		const librarianPath = join(agentDirectory, "agents", "Librarian.md");
 		const librarianPreset = readFileSync(librarianPath, "utf8");
@@ -207,6 +176,9 @@ describe("Pi Suite extension", () => {
 		expect(librarianPreset).toContain("model: openai-codex/gpt-5.6-sol");
 		expect(librarianPreset).toContain("thinking: off");
 		expect(librarianPreset).toContain("max_turns: 50");
+		expect(librarianPreset).toContain("run_in_background: false");
+		expect(librarianPreset).toContain("persist_session: false");
+		expect(librarianPreset).toContain("output_transcript: false");
 		expect(librarianPreset).toContain("extensions: [pi-web-access]");
 		expect(librarianPreset).toContain("skills: true");
 		expect(librarianPreset).toContain("/tmp/pi-github-repos/<owner>/<repo>");
@@ -219,13 +191,23 @@ describe("Pi Suite extension", () => {
 		expect(oraclePreset).toContain("max_turns: 120");
 		expect(oraclePreset).toContain("inherit_context: false");
 		expect(oraclePreset).toContain("run_in_background: false");
+		expect(oraclePreset).toContain("persist_session: false");
+		expect(oraclePreset).toContain("output_transcript: false");
+		expect(oraclePreset).toContain("allowed_subagents: [Explore, Librarian]");
+		expect(oraclePreset).toContain("extensions: [pi-suite, pi-web-access]");
 		expect(oraclePreset).toContain("workspace-relative file paths and line numbers or ranges");
 		expect(JSON.parse(readFileSync(join(agentDirectory, "subagents.json"), "utf8"))).toEqual({
 			maxConcurrent: 8,
 			disableDefaultAgents: true,
+			backgroundByDefault: false,
+			rememberAgents: false,
+			outputTranscript: false,
+			workflowsEnabled: false,
+			schedulingEnabled: false,
+			maxSubagentDepth: 2,
 		});
 		expect(notify).toHaveBeenCalledWith(
-			"Installed 3 presets. Upstream default agents are disabled globally. Run /reload to use the presets.",
+			"Installed 3 presets. Suite presets use blocking calls and disable session retention. Upstream defaults and workflows are disabled. Run /reload; existing definitions must be updated manually.",
 			"info",
 		);
 
@@ -235,6 +217,20 @@ describe("Pi Suite extension", () => {
 		writeFileSync(explorePath, customizedExplore, "utf8");
 		writeFileSync(librarianPath, customizedLibrarian, "utf8");
 		writeFileSync(oraclePath, customizedOracle, "utf8");
+		writeFileSync(
+			join(agentDirectory, "subagents.json"),
+			JSON.stringify({
+				maxConcurrent: 8,
+				disableDefaultAgents: false,
+				backgroundByDefault: true,
+				rememberAgents: true,
+				outputTranscript: true,
+				workflowsEnabled: true,
+				schedulingEnabled: true,
+				maxSubagentDepth: 9,
+			}),
+			"utf8",
+		);
 		notify.mockClear();
 		await commands.get("suite")?.handler("", {
 			mode: "tui",
@@ -244,37 +240,37 @@ describe("Pi Suite extension", () => {
 		expect(readFileSync(explorePath, "utf8")).toBe(customizedExplore);
 		expect(readFileSync(librarianPath, "utf8")).toBe(customizedLibrarian);
 		expect(readFileSync(oraclePath, "utf8")).toBe(customizedOracle);
+		expect(JSON.parse(readFileSync(join(agentDirectory, "subagents.json"), "utf8"))).toEqual({
+			maxConcurrent: 8,
+			disableDefaultAgents: true,
+			backgroundByDefault: false,
+			rememberAgents: false,
+			outputTranscript: false,
+			workflowsEnabled: false,
+			schedulingEnabled: false,
+			maxSubagentDepth: 2,
+		});
 		expect(notify).toHaveBeenCalledWith(
-			"All presets were already installed. Left 3 existing definitions unchanged. Upstream default agents are disabled globally. Run /reload to use the presets.",
+			"All presets were already installed. Left 3 existing definitions unchanged. Suite presets use blocking calls and disable session retention. Upstream defaults and workflows are disabled. Run /reload; existing definitions must be updated manually.",
 			"info",
 		);
 	});
 
-	test("registers session tools globally and Oracle research tools only inside Oracle", async () => {
+	test("registers session tools in both main and Oracle sessions", async () => {
 		const mainSession = createExtensionApi();
-		expect(mainSession.tools.has(SESSION_SEARCH_TOOL_NAME)).toBe(true);
-		expect(mainSession.tools.has(SESSION_READ_TOOL_NAME)).toBe(true);
-		expect(mainSession.tools.has(ORACLE_FINDER_TOOL_NAME)).toBe(false);
-		expect(mainSession.tools.has(ORACLE_LIBRARIAN_TOOL_NAME)).toBe(false);
-
-		await mainSession.handlers.get("session_start")?.(
+		const oracleSession = createExtensionApi();
+		await oracleSession.handlers.get("session_start")?.(
 			{ reason: "startup" },
 			{
 				mode: "print",
 				hasUI: false,
-				getSystemPrompt: () => "You are Pi's main coding agent.",
+				getSystemPrompt: () => '<active_agent name="Oracle"/>\n\nYou are Oracle.',
 				sessionManager: { getBranch: () => [] },
 				ui: { notify: vi.fn() },
 			},
 		);
-		expect(mainSession.tools.has(ORACLE_FINDER_TOOL_NAME)).toBe(false);
-		expect(mainSession.tools.has(ORACLE_LIBRARIAN_TOOL_NAME)).toBe(false);
-
-		const oracleSession = await createOracleExtensionApi();
-		expect(oracleSession.tools.has(SESSION_SEARCH_TOOL_NAME)).toBe(true);
-		expect(oracleSession.tools.has(SESSION_READ_TOOL_NAME)).toBe(true);
-		expect(oracleSession.tools.has(ORACLE_FINDER_TOOL_NAME)).toBe(true);
-		expect(oracleSession.tools.has(ORACLE_LIBRARIAN_TOOL_NAME)).toBe(true);
+		expect([...mainSession.tools.keys()]).toEqual([SESSION_SEARCH_TOOL_NAME, SESSION_READ_TOOL_NAME]);
+		expect([...oracleSession.tools.keys()]).toEqual([SESSION_SEARCH_TOOL_NAME, SESSION_READ_TOOL_NAME]);
 
 		const searchResult = await mainSession.tools
 			.get(SESSION_SEARCH_TOOL_NAME)
@@ -284,165 +280,6 @@ describe("Pi Suite extension", () => {
 			});
 		expect(searchResult?.content[0].text).toContain("all working directories");
 		expect(searchResult?.content[0].text).toContain("No historical sessions matched");
-	});
-
-	test("delegates Oracle research to a foreground Explore subagent and returns its result", async () => {
-		const { events, tools } = await createOracleExtensionApi();
-		let spawnRequest: any;
-		events.on("subagents:rpc:spawn", (value) => {
-			spawnRequest = value;
-			queueMicrotask(() => {
-				events.emit(`subagents:rpc:spawn:reply:${spawnRequest.requestId}`, {
-					success: true,
-					data: { id: "explore-1" },
-				});
-				events.emit("subagents:completed", {
-					id: "explore-1",
-					status: "completed",
-					result: "The ownership path is src/router.ts:12-40.",
-					toolUses: 4,
-					durationMs: 120,
-				});
-			});
-		});
-
-		const result = await tools.get(ORACLE_FINDER_TOOL_NAME)?.execute(
-			"tool-call-1",
-			{
-				prompt: "Find the request-routing source of truth and return file-and-line evidence.",
-				description: "Trace request routing",
-			},
-			undefined,
-			undefined,
-			{},
-		);
-
-		expect(spawnRequest).toMatchObject({
-			type: "Explore",
-			prompt: "Find the request-routing source of truth and return file-and-line evidence.",
-			options: {
-				description: "Trace request routing",
-				isBackground: false,
-				inheritContext: false,
-			},
-		});
-		expect(result).toEqual({
-			content: [{ type: "text", text: "The ownership path is src/router.ts:12-40." }],
-			details: {
-				id: "explore-1",
-				status: "completed",
-				toolUses: 4,
-				durationMs: 120,
-				tokens: undefined,
-			},
-		});
-	});
-
-	test("delegates Oracle external research to a foreground Librarian subagent and returns its result", async () => {
-		const { events, tools } = await createOracleExtensionApi();
-		let spawnRequest: any;
-		events.on("subagents:rpc:spawn", (value) => {
-			spawnRequest = value;
-			queueMicrotask(() => {
-				events.emit(`subagents:rpc:spawn:reply:${spawnRequest.requestId}`, {
-					success: true,
-					data: { id: "librarian-1" },
-				});
-				events.emit("subagents:completed", {
-					id: "librarian-1",
-					status: "completed",
-					result: "Upstream implements the flow in owner/repo at commit abc123.",
-					toolUses: 7,
-					durationMs: 350,
-				});
-			});
-		});
-
-		const result = await tools.get(ORACLE_LIBRARIAN_TOOL_NAME)?.execute(
-			"tool-call-librarian-1",
-			{
-				prompt: "Inspect owner/repo at v2.0 and explain the request flow with immutable source links.",
-				description: "Research upstream flow",
-			},
-			undefined,
-			undefined,
-			{},
-		);
-
-		expect(spawnRequest).toMatchObject({
-			type: "Librarian",
-			prompt: "Inspect owner/repo at v2.0 and explain the request flow with immutable source links.",
-			options: {
-				description: "Research upstream flow",
-				isBackground: false,
-				inheritContext: false,
-			},
-		});
-		expect(result).toEqual({
-			content: [{ type: "text", text: "Upstream implements the flow in owner/repo at commit abc123." }],
-			details: {
-				id: "librarian-1",
-				status: "completed",
-				toolUses: 7,
-				durationMs: 350,
-				tokens: undefined,
-			},
-		});
-	});
-
-	test("stops an in-flight Oracle research subagent when the tool call is cancelled", async () => {
-		const { events, tools } = await createOracleExtensionApi();
-		let stopRequest: any;
-		events.on("subagents:rpc:spawn", (value: any) => {
-			queueMicrotask(() => {
-				events.emit(`subagents:rpc:spawn:reply:${value.requestId}`, {
-					success: true,
-					data: { id: "explore-cancelled" },
-				});
-			});
-		});
-		events.on("subagents:rpc:stop", (value) => {
-			stopRequest = value;
-		});
-		const controller = new AbortController();
-		const result = tools
-			.get(ORACLE_FINDER_TOOL_NAME)
-			?.execute(
-				"tool-call-2",
-				{ prompt: "Trace the flow.", description: "Trace flow" },
-				controller.signal,
-				undefined,
-				{},
-			);
-		await new Promise<void>((resolve) => queueMicrotask(resolve));
-
-		controller.abort(new Error("cancelled by parent"));
-
-		await expect(result).rejects.toThrow("cancelled by parent");
-		expect(stopRequest).toMatchObject({ agentId: "explore-cancelled" });
-	});
-
-	test("surfaces an Oracle research subagent failure", async () => {
-		const { events, tools } = await createOracleExtensionApi();
-		events.on("subagents:rpc:spawn", (value: any) => {
-			queueMicrotask(() => {
-				events.emit(`subagents:rpc:spawn:reply:${value.requestId}`, {
-					success: true,
-					data: { id: "explore-failed" },
-				});
-				events.emit("subagents:failed", {
-					id: "explore-failed",
-					status: "error",
-					error: "model request failed",
-				});
-			});
-		});
-
-		const result = tools
-			.get(ORACLE_FINDER_TOOL_NAME)
-			?.execute("tool-call-3", { prompt: "Trace the flow.", description: "Trace flow" }, undefined, undefined, {});
-
-		await expect(result).rejects.toThrow("model request failed");
 	});
 
 	test("persists the historical session reader model and thinking level", async () => {
@@ -617,16 +454,18 @@ describe("Pi Suite extension", () => {
 			| {
 					modelId: string;
 					reasoning: unknown;
+					headers: unknown;
 					prompt: string;
 			  }
 			| undefined;
 		fauxProvider.setResponses([
 			(context, options, _state, requestedModel) => {
 				const firstMessage = context.messages[0];
-				const summarizationOptions = options as { reasoning?: unknown } | undefined;
+				const summarizationOptions = options as { reasoning?: unknown; headers?: unknown } | undefined;
 				request = {
 					modelId: requestedModel.id,
 					reasoning: summarizationOptions?.reasoning,
+					headers: summarizationOptions?.headers,
 					prompt:
 						firstMessage?.role === "user" && typeof firstMessage.content !== "string"
 							? firstMessage.content[0]?.type === "text"
@@ -655,7 +494,11 @@ describe("Pi Suite extension", () => {
 				getAvailable: () => [model],
 				find: (provider: string, modelId: string) =>
 					provider === model.provider && modelId === model.id ? model : undefined,
-				getApiKeyAndHeaders: async () => ({ ok: true, apiKey: "faux-key" }),
+				getApiKeyAndHeaders: async () => ({
+					ok: true,
+					apiKey: "faux-key",
+					headers: { "x-keep": "present", "x-empty": "", "x-deleted": null },
+				}),
 			},
 			sessionManager: { getBranch: () => [] },
 		};
@@ -701,6 +544,7 @@ describe("Pi Suite extension", () => {
 		expect(result.compaction.summary).toContain("Summary generated by the selected model");
 		expect(result.compaction.firstKeptEntryId).toBe("kept-entry");
 		expect(request).toMatchObject({ modelId: "summary-model", reasoning: "high" });
+		expect(request?.headers).toEqual({ "x-keep": "present", "x-empty": "" });
 		expect(request?.prompt).toContain("Focus on decisions");
 		expect(fauxProvider.state.callCount).toBe(1);
 

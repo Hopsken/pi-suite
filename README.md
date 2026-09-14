@@ -145,7 +145,8 @@ globally:
 - **Explore** provides finder-style behavior and concept discovery, chained searches, call-path tracing, and cross-module
   correlation in an isolated context. It returns concise findings with file and line evidence. Pi should use its direct
   read, grep, and find tools instead for known paths, symbols, and exact strings, and can launch multiple `Explore` agents
-  in parallel for independent discovery questions. It is pinned to GPT-5.6 Terra with low thinking.
+  in parallel for independent discovery questions. It does not inherit the caller's context and is pinned to GPT-5.6
+  Terra with low thinking.
 - **Librarian** provides Amp-style external source-code research for repositories outside the local workspace. Use it to
   understand upstream dependencies, locate feature implementations, compare patterns across projects, trace code history,
   or inspect public and `gh`-authenticated private GitHub repositories. It uses Web Access to locate and fetch authoritative
@@ -156,21 +157,31 @@ globally:
   tradeoffs, and complex implementation plans. Brief it with one focused question, the intent, relevant files or git refs,
   constraints, risks or alternatives to assess, and the desired output. It advises only; the parent agent remains
   responsible for applying and verifying recommendations. It can retrieve current external evidence with the bundled Web
-  Access tools, delegate focused local repository discovery to the read-only `Explore` type, and delegate authoritative
-  external source-code research to `Librarian`. It is pinned to GPT-5.6 Sol with high thinking.
+  Access tools and use native, manager-scoped `Agent` tools to delegate focused local repository discovery to the read-only
+  `Explore` type or authoritative external source-code research to `Librarian`. It is pinned to GPT-5.6 Sol with high
+  thinking.
 
 The command writes to `$PI_CODING_AGENT_DIR/agents` (normally `~/.pi/agent/agents`), preserves existing customized
-definitions, and disables the upstream default agents in favor of suite and user definitions. Run `/reload` afterward.
+definitions, and applies global Subagents defaults of `disableDefaultAgents: true`, `backgroundByDefault: false`,
+`rememberAgents: false`, `workflowsEnabled: false`, `schedulingEnabled: false`, `maxSubagentDepth: 2`, and
+`outputTranscript: false`. Project settings have higher priority and can override these global values. Run `/reload`
+afterward. Scheduling is disabled, and the `Agent` tool has no `schedule` parameter.
+
+All three suite presets hard-override `run_in_background: false`, even if a caller explicitly requests background
+execution, so their result returns in the spawning turn without a redundant completion-notification turn. All three set
+`persist_session: false` and `output_transcript: false`; their own sessions and separate `.output` transcript files are not
+retained, but their results remain in the caller's session, and this does not disable Web Access's cache. To retain an
+agent's sessions for `session_search`, set `persist_session: true` in that agent's installed preset and run `/reload`.
+
 Explore and Oracle disable skills; Librarian inherits available skills so authenticated repository-research workflows such
 as Sourcegraph can complement Web Access. Explore exposes only read-oriented built-ins. Librarian loads only the Web Access
 extension and selectively exposes `web_search`, `fetch_content`, and `get_search_content` alongside read-oriented built-ins;
 its prompt requires non-interactive search and limits other Bash use to external clone inspection or read-only workflows
-defined by loaded skills. Oracle uses Subagents' `disallowed_tools` denylist to structurally remove `edit` and `write`, and
-selectively exposes Pi Suite's `oracle_finder` and `oracle_librarian` adapters plus the same Web Access tools; it
-does not inherit other extension tools. Pi Suite registers both adapters only inside the Oracle child session, so they are
-absent from the main Pi agent's tool schema. Each adapter hard-codes its one allowed child type rather than exposing generic
-recursive delegation. Because all three presets retain Bash for repository inspection, their non-mutating shell policy is
-prompt-enforced rather than sandboxed. See
+defined by loaded skills. Oracle loads `[pi-suite, pi-web-access]`, not `pi-subagents`, and exposes read-only built-ins plus
+Pi Suite's history tools and Web Access's three tools; `edit` and `write` are explicitly denied. Its
+`allowed_subagents: [Explore, Librarian]` gives the manager native scoped delegation tools and prevents recursion into
+Oracle. Because all three presets retain Bash for repository inspection, their non-mutating shell policy is prompt-enforced
+rather than sandboxed. See
 [Adding a subagent type](docs/adding-subagent-types.md) when extending the suite's preset catalog.
 
 ## Install
@@ -188,8 +199,10 @@ pi install git:github.com/Hopsken/pi-suite
 ```
 
 Restart Pi after installation or run `/reload`, use **Setup agents** in `/suite` once, then run `/reload` again to use
-`Explore`, `Librarian`, and `Oracle`. Use `/tools` to manage the active tool set, `/agents` to manage subagents, and `/suite`
-to configure Pi Suite.
+`Explore`, `Librarian`, and `Oracle`. Setup preserves existing user presets: `/reload` does not rewrite installed
+definitions. To adopt updated suite frontmatter or prompts, edit an existing definition manually, or back it up, remove the
+Suite definition, and run Setup again. Use `/tools` to manage the active tool set, `/agents` to manage subagents, and
+`/suite` to configure Pi Suite.
 
 To install the curated packages piece by piece instead, use:
 

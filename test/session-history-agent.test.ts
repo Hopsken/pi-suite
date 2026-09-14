@@ -25,14 +25,13 @@ function lastToolResultText(context: Context, toolName: string): string {
 	const result = [...context.messages]
 		.reverse()
 		.find((message) => message.role === "toolResult" && message.toolName === toolName);
-	if (!result || result.role !== "toolResult") throw new Error(`No ${toolName} result reached the model.`);
+	if (result?.role !== "toolResult") throw new Error(`No ${toolName} result reached the model.`);
 	return result.content.map((part) => (part.type === "text" ? part.text : "")).join("\n");
 }
 
 function lastAssistantText(session: AgentSession): string {
 	const message = session.messages.at(-1);
-	if (!message || message.role !== "assistant")
-		throw new Error("The agent did not produce a final assistant response.");
+	if (message?.role !== "assistant") throw new Error("The agent did not produce a final assistant response.");
 	return message.content.map((part) => (part.type === "text" ? part.text : "")).join("\n");
 }
 
