@@ -32,8 +32,11 @@ workflow. Verify upgrades from an existing installation, not only clean installs
 Use **Tool display** in `/suite` to switch between **Normal** and **Compact**. Normal is the default. Suite saves the
 selection as `toolDisplay` in `~/.pi/agent/pi-suite.json` and restores it after restarts and `/reload`.
 
-Compact display shows each built-in tool call as a name and status, such as `bash · running` or `read · done`. It hides
-text arguments, diffs, and text output. Calls are not grouped. Native tool framing and image display remain unchanged.
+Compact display shows each built-in call with its name, key arguments, and status, such as
+`read src/config.ts:20–80 · done` or `bash pnpm test · running`. File tools show paths; `edit` also shows batch size,
+and `grep`/`find` show the search pattern and directory. Multi-line commands show the first line and a remaining-line
+count. Summaries fit one terminal line, keep path tails when shortened, and reserve room for status. They never dump
+argument JSON, file contents, diffs, or text results. Calls are not grouped. Native tool framing and images are unchanged.
 User messages, assistant text, and final answers stay visible. Switching modes changes tool rows created with Suite's
 renderers, including calls that have already finished.
 

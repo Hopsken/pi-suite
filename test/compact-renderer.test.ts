@@ -15,9 +15,9 @@ import {
 	type ToolDefinition,
 	ToolExecutionComponent,
 } from "@earendil-works/pi-coding-agent";
-import type { Component, TUI } from "@earendil-works/pi-tui";
+import { type Component, type TUI, visibleWidth } from "@earendil-works/pi-tui";
 import { afterEach, expect, test, vi } from "vitest";
-import { withCompactRendering } from "../src/compact-renderer.ts";
+import { compactToolLine, withCompactRendering } from "../src/compact-renderer.ts";
 import { loadToolDisplayMode, saveToolDisplayMode } from "../src/state.ts";
 import { registerToolDisplay } from "../src/tool-display.ts";
 
@@ -48,7 +48,55 @@ const factories = [
 	createLsToolDefinition,
 ];
 
-test("all eight built-ins keep native rendering in Normal and hide text arguments/results in Compact", () => {
+test.each([
+	["read", { path: "/repo/src/config.ts", offset: 20, limit: 61 }, "read src/config.ts:20–80 · done"],
+	["read", { path: "config.ts", limit: 3 }, "read config.ts:1–3 · done"],
+	["read", { path: "config.ts", offset: 7 }, "read config.ts:7– · done"],
+	["read", { path: "config.ts", offset: "7", limit: -2 }, "read config.ts · done"],
+	["bash", { command: "pnpm test\necho status\nexit 0\n" }, "bash pnpm test (+2 lines) · done"],
+	[
+		"powershell",
+		{ command: "Get-Content config.ts\r\nWrite-Output done" },
+		"powershell Get-Content config.ts (+1 line) · done",
+	],
+	[
+		"edit",
+		{ file_path: "config.ts", edits: [{ oldText: "secret" }, { newText: "secret" }] },
+		"edit config.ts (2 edits) · done",
+	],
+	["write", { path: "config.ts", content: "secret" }, "write config.ts · done"],
+	["grep", { pattern: "timeout", path: "src/" }, 'grep "timeout" in src/ · done'],
+	["find", { pattern: "*.ts", path: "/repo" }, 'find "*.ts" in . · done'],
+	["ls", { path: "/repository/external" }, "ls /repository/external · done"],
+	["read", { path: { incomplete: true } }, "read · done"],
+	["bash", undefined, "bash · done"],
+	["grep", { pattern: "\u001b[31mred\u001b[0m\nline\tend" }, 'grep "red line end" · done'],
+] as const)("formats %s arguments without JSON or payloads", (name, args, expected) => {
+	expect(compactToolLine(name, args, "/repo", "done", 120)).toBe(expected);
+});
+
+test("truncates by terminal cells, preserves path tails and reserves status and command line counts", () => {
+	expect(compactToolLine("read", { path: "very/long/path/to/config.ts" }, "/repo", "done", 30)).toBe(
+		"read …path/to/config.ts · done",
+	);
+	const command = { command: `printf '${"界🙂".repeat(40)}'\necho hidden\nexit 0` };
+	const line = compactToolLine("bash", command, "/repo", "failed", 46);
+	expect(line).toContain("bash printf");
+	expect(line).toContain("… (+2 lines) · failed");
+	expect(line).not.toContain("echo hidden");
+	for (let width = 0; width <= 60; width++) {
+		for (const [name, args] of [
+			["bash", command],
+			["read", { path: `${"界🙂/".repeat(15)}config.ts`, offset: 3, limit: 9 }],
+		] as const) {
+			const value = compactToolLine(name, args, "/repo", "running", width);
+			expect(visibleWidth(value)).toBeLessThanOrEqual(width);
+			expect(value).not.toMatch(/[\n\r\x1b]/);
+		}
+	}
+});
+
+test("all eight built-ins keep native rendering in Normal and hide content/results in Compact", () => {
 	const cwd = directory();
 	const ui = { requestRender: vi.fn() } as unknown as TUI;
 	let compact = false;
@@ -78,8 +126,8 @@ test("all eight built-ins keep native rendering in Normal and hide text argument
 			compact = false;
 			expect(row.render(80)).toEqual(native.render(80));
 			compact = true;
-			expect(row.render(80).join("\n")).toContain(`${original.name} · failed`);
-			expect(row.render(80).join("\n")).not.toContain("private-");
+			expect(row.render(80).join("\n")).toContain("· failed");
+			expect(row.render(80).join("\n")).not.toMatch(/private-content|private-result/);
 			compact = false;
 			// No new result or call is needed to restore an existing row.
 			expect(row.render(80)).toEqual(native.render(80));
@@ -101,9 +149,9 @@ test("pending, running, partial and completed calls update through public render
 		{ requestRender: vi.fn() } as unknown as TUI,
 		cwd,
 	);
-	expect(row.render(60).join("\n")).toContain("bash · pending");
+	expect(row.render(60).join("\n")).toContain("bash printf private · pending");
 	row.markExecutionStarted();
-	expect(row.render(60).join("\n")).toContain("bash · running");
+	expect(row.render(60).join("\n")).toContain("bash printf private · running");
 	row.updateResult({ content: [{ type: "text", text: "private-partial" }], isError: false }, true);
 	expect(vi.getTimerCount()).toBeGreaterThan(0);
 	compact = false;
@@ -111,8 +159,8 @@ test("pending, running, partial and completed calls update through public render
 	compact = true;
 	row.updateResult({ content: [{ type: "text", text: "private-final" }], isError: false });
 	expect(vi.getTimerCount()).toBe(0);
-	expect(row.render(60).join("\n")).toContain("bash · done");
-	expect(row.render(60).join("\n")).not.toContain("private");
+	expect(row.render(60).join("\n")).toContain("bash printf private · done");
+	expect(row.render(60).join("\n")).not.toContain("private-final");
 	compact = false;
 	expect(row.render(60).join("\n")).toContain("private-final");
 });
@@ -188,7 +236,7 @@ test("mode persists across reloads, updates existing rows, and failed saves pres
 	);
 	expect(row.render(80).join("\n")).toContain("private.txt");
 	await h.configure(h.ctx);
-	expect(row.render(80).join("\n")).not.toContain("private.txt");
+	expect(row.render(80).join("\n")).toContain("read private.txt · pending");
 	expect(JSON.parse(readFileSync(path, "utf8"))).toEqual({
 		compactionModel: "example:low",
 		custom: 42,
@@ -206,7 +254,7 @@ test("mode persists across reloads, updates existing rows, and failed saves pres
 		h.ui,
 		cwd,
 	);
-	expect(restored.render(80).join("\n")).toContain("read · pending");
+	expect(restored.render(80).join("\n")).toContain("read private.txt · pending");
 	vi.mocked(h.ctx.ui.select).mockResolvedValue(undefined);
 	expect(await h.configure(h.ctx)).toBe(false);
 	vi.mocked(h.ctx.ui.select).mockResolvedValue("Normal");
@@ -214,7 +262,7 @@ test("mode persists across reloads, updates existing rows, and failed saves pres
 	await h.configure(h.ctx);
 	expect(h.ctx.ui.notify).toHaveBeenLastCalledWith(expect.stringContaining("Could not change"), "error");
 	expect(readFileSync(path, "utf8")).toBe("broken");
-	expect(restored.render(80).join("\n")).toContain("read · pending");
+	expect(restored.render(80).join("\n")).toContain("read private.txt · pending");
 	writeFileSync(path, "{}");
 	await h.configure(h.ctx);
 	expect(loadToolDisplayMode()).toBe("normal");
@@ -234,8 +282,8 @@ test("reload history built before session_start stays native while subsequent ro
 	h.start();
 	const next = new ToolExecutionComponent("read", "new", args, {}, h.tools.get("read"), h.ui, cwd);
 	expect(history.render(80).join("\n")).toContain("history.txt");
-	expect(next.render(80).join("\n")).toContain("read · pending");
-	expect(next.render(80).join("\n")).not.toContain("history.txt");
+	expect(history.render(80).join("\n")).not.toContain("· pending");
+	expect(next.render(80).join("\n")).toContain("read history.txt · pending");
 	expect(loadToolDisplayMode()).toBe("compact");
 	h.dispose();
 });
