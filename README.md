@@ -32,17 +32,25 @@ workflow. Verify upgrades from an existing installation, not only clean installs
 Use **Tool display** in `/suite` to switch between **Normal** and **Compact**. Normal is the default. Suite saves the
 selection as `toolDisplay` in `~/.pi/agent/pi-suite.json` and restores it after restarts and `/reload`.
 
-Compact display replaces consecutive tool rows with counts such as `read ×3 · bash ×2`. It hides tool arguments and output,
-but keeps pending, running, and failure counts. Assistant messages separate groups even when their thinking is hidden.
-User messages, assistant text, and final answers stay visible. Switching modes also changes existing transcript rows.
-Built-in and extension tools use the same grouping; tools shown in separate extension panels are not changed.
+Compact display shows each built-in tool call as a name and status, such as `bash · running` or `read · done`. It hides
+text arguments, diffs, and text output. Calls are not grouped. Native tool framing and image display remain unchanged.
+User messages, assistant text, and final answers stay visible. Switching modes changes tool rows created with Suite's
+renderers, including calls that have already finished.
+
+**Reload limitation:** Pi rebuilds historical rows before the `session_start` hook used to register these renderers.
+After `/reload`, those historical rows keep native rendering, even when Compact is selected. New calls use the saved
+display mode. Suite does not change tool activation or patch the transcript to work around this lifecycle ordering.
+
+This applies only to Pi's built-in `read`, `bash`, `powershell`, `edit`, `write`, `find`, `grep`, and `ls` tools. Suite's own
+tools, third-party tools, and built-ins replaced by another extension keep their existing display. Third-party extension
+loading and package bundling are unchanged.
 
 No shortcuts or Pi settings are changed. Ctrl+T still controls thinking independently. Ctrl+O retains its native tool
 expansion behavior, which is visible in Normal mode. This feature does not change tool execution or session data.
 
-The current implementation uses Pi's internal transcript components and supports Pi **0.85.1**. On an unsupported version
-or layout, Suite reports the incompatibility and keeps Normal display. A future Pi update needs a Suite compatibility
-update; do not edit Pi's installed files to enable this feature.
+Suite uses Pi's public tool-definition factories and `renderCall`/`renderResult` APIs. It delegates execution to the native
+tools with the current working directory and trusted settings, and preserves the active tool selection. Normal mode uses
+the original renderers. There is no private TUI patch or exact-version restriction.
 
 #### CLI tool discovery
 

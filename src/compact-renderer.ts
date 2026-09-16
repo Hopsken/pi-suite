@@ -1,89 +1,72 @@
-import { type Theme, VERSION } from "@earendil-works/pi-coding-agent";
-import { type Component, Container, Text, type TUI } from "@earendil-works/pi-tui";
+import type { ToolDefinition } from "@earendil-works/pi-coding-agent";
+import { type Component, Text, type TuiMouseEvent } from "@earendil-works/pi-tui";
 
-// Pi has no public transcript transform. Keep the private 0.85.1 contract here,
-// fail closed on upgrades, and never replace tools or mutate session messages.
-interface ToolRow extends Component {
-	toolName: string;
-	toolCallId: string;
-	isPartial: boolean;
-	executionStarted: boolean;
-	result?: { isError: boolean };
-}
+/** Keep native renderer components separate from the compact presentation. */
+class ToolDisplayComponent implements Component {
+	readonly normal: Component;
+	private readonly minimal: Component;
+	private readonly isCompact: () => boolean;
 
-function isToolRow(component: Component): component is ToolRow {
-	return (
-		"toolName" in component &&
-		typeof component.toolName === "string" &&
-		"toolCallId" in component &&
-		typeof component.toolCallId === "string" &&
-		"isPartial" in component &&
-		typeof component.isPartial === "boolean" &&
-		"executionStarted" in component &&
-		typeof component.executionStarted === "boolean" &&
-		"updateResult" in component &&
-		typeof component.updateResult === "function"
-	);
-}
-
-function summary(tools: ToolRow[], theme: Theme): Component {
-	const counts = new Map<string, number>();
-	let running = 0;
-	let pending = 0;
-	let failed = 0;
-	for (const tool of tools) {
-		counts.set(tool.toolName, (counts.get(tool.toolName) ?? 0) + 1);
-		if (!tool.result || tool.isPartial) {
-			if (tool.executionStarted) running++;
-			else pending++;
-		} else if (tool.result.isError) failed++;
+	constructor(normal: Component, minimal: Component, isCompact: () => boolean) {
+		this.normal = normal;
+		this.minimal = minimal;
+		this.isCompact = isCompact;
 	}
-	const parts = Array.from(counts, ([name, count]) => `${name} ×${count}`);
-	if (running) parts.push(`${running} running`);
-	if (pending) parts.push(`${pending} pending`);
-	const label = theme.fg("muted", parts.join(" · "));
-	const errors = failed ? theme.fg("error", ` · ${failed} failed`) : "";
-	return new Text(`\n${label}${errors}`, 1, 0);
+
+	render(width: number): string[] {
+		return (this.isCompact() ? this.minimal : this.normal).render(width);
+	}
+
+	invalidate(): void {
+		this.normal.invalidate();
+		this.minimal.invalidate();
+	}
+
+	handleMouse(event: TuiMouseEvent) {
+		if (!this.isCompact()) return this.normal.handleMouse?.(event);
+		return undefined;
+	}
 }
 
-export function installCompactRenderer(tui: TUI, theme: Theme, isCompact: () => boolean): () => void {
-	if (VERSION !== "0.85.1") throw new Error(`Compact display supports Pi 0.85.1; found ${VERSION}.`);
-	const document = tui.children[0];
-	if (!(document instanceof Container) || document.children.length !== 3 || tui.children.length !== 7)
-		throw new Error("Pi transcript layout is incompatible with compact display.");
-	const chat = document.children[2];
-	if (!(chat instanceof Container)) throw new Error("Pi chat container is unavailable.");
-	const originalRender = chat.render;
-	const render = (width: number): string[] => {
-		if (!isCompact()) return originalRender.call(chat, width);
-		const originalChildren = chat.children;
-		const children: Component[] = [];
-		let group: ToolRow[] = [];
-		const flush = () => {
-			if (group.length) children.push(summary(group, theme));
-			group = [];
-		};
-		for (const child of originalChildren) {
-			if (isToolRow(child)) group.push(child);
-			else {
-				// Invisible thinking/assistant rows still delimit groups.
-				flush();
-				children.push(child);
-			}
-		}
-		flush();
-		// Let Container build mouse hit regions for the displayed children, then
-		// restore the exact native array before Pi receives any further events.
-		chat.children = children;
-		try {
-			return originalRender.call(chat, width);
-		} finally {
-			chat.children = originalChildren;
-		}
-	};
-	chat.render = render;
-	return () => {
-		if (chat.render === render) chat.render = originalRender;
-		tui.requestRender(true);
+/** Decorate only the public rendering slots; preserve the tool's other fields. */
+export function withCompactRendering(
+	tool: ToolDefinition<any, any>,
+	isCompact: () => boolean,
+): ToolDefinition<any, any> {
+	const call = tool.renderCall;
+	const result = tool.renderResult;
+	if (!call || !result) throw new Error(`Built-in tool ${tool.name} does not provide renderers.`);
+	return {
+		...tool,
+		renderCall(args, theme, context) {
+			const previous = context.lastComponent;
+			const normal = call(args, theme, {
+				...context,
+				lastComponent: previous instanceof ToolDisplayComponent ? previous.normal : undefined,
+			});
+			const status = context.isError
+				? "failed"
+				: !context.isPartial
+					? "done"
+					: context.executionStarted
+						? "running"
+						: "pending";
+			const color = context.isError ? "error" : "muted";
+			return new ToolDisplayComponent(
+				normal,
+				new Text(theme.fg(color, `${tool.name} · ${status}`), tool.renderShell === "self" ? 1 : 0, 0),
+				isCompact,
+			);
+		},
+		renderResult(value, options, theme, context) {
+			const previous = context.lastComponent;
+			// Keep calling the native renderer in compact mode too. Some native
+			// renderers maintain timers and preview state until the final result.
+			const normal = result(value, options, theme, {
+				...context,
+				lastComponent: previous instanceof ToolDisplayComponent ? previous.normal : undefined,
+			});
+			return new ToolDisplayComponent(normal, new Text("", 0, 0), isCompact);
+		},
 	};
 }
