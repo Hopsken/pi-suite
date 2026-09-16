@@ -47,7 +47,7 @@ function warnUnavailable(ctx: ExtensionContext, message: string): void {
 
 /** Registers Pi Suite's integrated workflows. */
 export default function piSuite(pi: ExtensionAPI): void {
-	const configureToolDisplay = registerToolDisplay(pi);
+	registerToolDisplay(pi);
 	// The package loads Suite before Subagents, which reads presets during activation.
 	let presetUpdateNotice: string | undefined;
 	let presetUpdateFailed = false;
@@ -368,17 +368,12 @@ export default function piSuite(pi: ExtensionAPI): void {
 
 			while (true) {
 				const item = await ctx.ui.select("Pi Suite Configuration", [
-					"Tool display",
 					"Compaction model",
 					"Session reader model",
 					"Session title model",
 					"Setup agents",
 				]);
 				if (!item) return;
-				if (item === "Tool display") {
-					if (await configureToolDisplay(ctx)) return;
-					continue;
-				}
 				if (item === "Setup agents") {
 					await setupAgents(ctx);
 					return;

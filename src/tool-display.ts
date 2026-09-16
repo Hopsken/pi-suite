@@ -12,9 +12,7 @@ import {
 	SettingsManager,
 	type ToolDefinition,
 } from "@earendil-works/pi-coding-agent";
-import type { TUI } from "@earendil-works/pi-tui";
 import { withCompactRendering } from "./compact-renderer.ts";
-import { loadToolDisplayMode, saveToolDisplayMode, type ToolDisplayMode } from "./state.ts";
 
 function settings(ctx: ExtensionContext): SettingsManager {
 	return SettingsManager.create(ctx.cwd, undefined, { projectTrusted: ctx.isProjectTrusted() });
@@ -37,9 +35,7 @@ const factories: Record<string, (ctx: ExtensionContext) => ToolDefinition<any, a
 	ls: (ctx) => createLsToolDefinition(ctx.cwd),
 };
 
-export function registerToolDisplay(pi: ExtensionAPI): (ctx: ExtensionContext) => Promise<boolean> {
-	let mode: ToolDisplayMode = "normal";
-	let tui: TUI | undefined;
+export function registerToolDisplay(pi: ExtensionAPI): void {
 	let registered = false;
 	const registerBuiltIns = (ctx: ExtensionContext) => {
 		if (registered) return;
@@ -48,7 +44,7 @@ export function registerToolDisplay(pi: ExtensionAPI): (ctx: ExtensionContext) =
 			const factory = factories[tool.name];
 			// Respect tools replaced by other extensions or an SDK host.
 			if (!factory || tool.sourceInfo?.source !== "builtin") continue;
-			const definition = withCompactRendering(factory(ctx), () => mode === "compact");
+			const definition = withCompactRendering(factory(ctx));
 			pi.registerTool({
 				...definition,
 				// Resolve cwd and trusted settings at execution time, including after
@@ -59,47 +55,12 @@ export function registerToolDisplay(pi: ExtensionAPI): (ctx: ExtensionContext) =
 		pi.setActiveTools(active);
 		registered = true;
 	};
-	const attach = (ctx: ExtensionContext) => {
-		if (tui) return;
-		ctx.ui.setWidget("suite-tool-display", (ui) => {
-			tui = ui;
-			return {
-				render: () => [],
-				invalidate: () => {},
-				dispose: () => {
-					tui = undefined;
-				},
-			};
-		});
-	};
-
 	pi.on("session_start", (_event, ctx) => {
 		if (ctx.mode !== "tui") return;
-		mode = "normal";
 		try {
 			registerBuiltIns(ctx);
-			const saved = loadToolDisplayMode();
-			if (saved === "compact") attach(ctx);
-			mode = saved;
-			tui?.requestRender(true);
 		} catch (error) {
-			ctx.ui.notify(`Could not restore tool display: ${String(error)} Using normal display.`, "warning");
+			ctx.ui.notify(`Could not register tool display: ${String(error)}`, "warning");
 		}
 	});
-
-	return async (ctx) => {
-		const selected = await ctx.ui.select("Tool display", ["Normal", "Compact"]);
-		if (!selected) return false;
-		const next = selected === "Compact" ? "compact" : "normal";
-		try {
-			if (next === "compact") attach(ctx);
-			saveToolDisplayMode(next);
-			mode = next;
-			tui?.requestRender(true);
-			ctx.ui.notify(`Tool display: ${next}.`, "info");
-		} catch (error) {
-			ctx.ui.notify(`Could not change tool display: ${String(error)}`, "error");
-		}
-		return true;
-	};
 }
