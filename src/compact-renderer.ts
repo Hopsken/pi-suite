@@ -129,7 +129,7 @@ export function withCompactRendering(
 					],
 					invalidate() {},
 				},
-				isCompact,
+				() => isCompact() && !context.expanded,
 			);
 		},
 		renderResult(value, options, theme, context) {
@@ -140,7 +140,7 @@ export function withCompactRendering(
 				...context,
 				lastComponent: previous instanceof ToolDisplayComponent ? previous.normal : undefined,
 			});
-			return new ToolDisplayComponent(normal, new Text("", 0, 0), isCompact);
+			return new ToolDisplayComponent(normal, new Text("", 0, 0), () => isCompact() && !options.expanded);
 		},
 	};
 }

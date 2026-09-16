@@ -96,7 +96,7 @@ test("truncates by terminal cells, preserves path tails and reserves status and 
 	}
 });
 
-test("all eight built-ins keep native rendering in Normal and hide content/results in Compact", () => {
+test("all eight built-ins show compact summaries only when collapsed, and restore native detail when expanded", () => {
 	const cwd = directory();
 	const ui = { requestRender: vi.fn() } as unknown as TUI;
 	let compact = false;
@@ -120,14 +120,18 @@ test("all eight built-ins keep native rendering in Normal and hide content/resul
 		const result = { content: [{ type: "text", text: "private-result" }], isError: true };
 		native.updateResult(result);
 		row.updateResult(result);
-		for (const expanded of [false, true]) {
+		for (const expanded of [false, true, false]) {
 			native.setExpanded(expanded);
 			row.setExpanded(expanded);
 			compact = false;
 			expect(row.render(80)).toEqual(native.render(80));
 			compact = true;
-			expect(row.render(80).join("\n")).toContain("· failed");
-			expect(row.render(80).join("\n")).not.toMatch(/private-content|private-result/);
+			if (expanded) {
+				expect(row.render(80)).toEqual(native.render(80));
+			} else {
+				expect(row.render(80).join("\n")).toContain("· failed");
+				expect(row.render(80).join("\n")).not.toMatch(/private-content|private-result/);
+			}
 			compact = false;
 			// No new result or call is needed to restore an existing row.
 			expect(row.render(80)).toEqual(native.render(80));
@@ -154,9 +158,10 @@ test("pending, running, partial and completed calls update through public render
 	expect(row.render(60).join("\n")).toContain("bash printf private · running");
 	row.updateResult({ content: [{ type: "text", text: "private-partial" }], isError: false }, true);
 	expect(vi.getTimerCount()).toBeGreaterThan(0);
-	compact = false;
+	row.setExpanded(true);
 	expect(row.render(60).join("\n")).toContain("private-partial");
-	compact = true;
+	row.setExpanded(false);
+	expect(row.render(60).join("\n")).not.toContain("private-partial");
 	row.updateResult({ content: [{ type: "text", text: "private-final" }], isError: false });
 	expect(vi.getTimerCount()).toBe(0);
 	expect(row.render(60).join("\n")).toContain("bash printf private · done");

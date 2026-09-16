@@ -32,7 +32,7 @@ workflow. Verify upgrades from an existing installation, not only clean installs
 Use **Tool display** in `/suite` to switch between **Normal** and **Compact**. Normal is the default. Suite saves the
 selection as `toolDisplay` in `~/.pi/agent/pi-suite.json` and restores it after restarts and `/reload`.
 
-Compact display shows each built-in call with its name, key arguments, and status, such as
+When tool output is collapsed, Compact shows each built-in call with its name, key arguments, and status, such as
 `read src/config.ts:20–80 · done` or `bash pnpm test · running`. File tools show paths; `edit` also shows batch size,
 and `grep`/`find` show the search pattern and directory. Multi-line commands show the first line and a remaining-line
 count. Summaries fit one terminal line, keep path tails when shortened, and reserve room for status. They never dump
@@ -48,8 +48,10 @@ This applies only to Pi's built-in `read`, `bash`, `powershell`, `edit`, `write`
 tools, third-party tools, and built-ins replaced by another extension keep their existing display. Third-party extension
 loading and package bundling are unchanged.
 
-No shortcuts or Pi settings are changed. Ctrl+T still controls thinking independently. Ctrl+O retains its native tool
-expansion behavior, which is visible in Normal mode. This feature does not change tool execution or session data.
+No shortcuts or Pi settings are changed. Ctrl+T still controls thinking independently. In Compact mode, native Ctrl+O
+switches between the summary and original expanded details; press it again to return to the summary. The Compact
+preference stays enabled. Normal mode retains Pi's usual collapsed/expanded display. This feature does not change tool
+execution or session data.
 
 Suite uses Pi's public tool-definition factories and `renderCall`/`renderResult` APIs. It delegates execution to the native
 tools with the current working directory and trusted settings, and preserves the active tool selection. Normal mode uses
