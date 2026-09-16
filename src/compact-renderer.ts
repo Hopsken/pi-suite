@@ -96,10 +96,7 @@ class ToolDisplayComponent implements Component {
 }
 
 /** Decorate only the public rendering slots; preserve the tool's other fields. */
-export function withCompactRendering(
-	tool: ToolDefinition<any, any>,
-	isCompact: () => boolean,
-): ToolDefinition<any, any> {
+export function withCompactRendering(tool: ToolDefinition<any, any>): ToolDefinition<any, any> {
 	const call = tool.renderCall;
 	const result = tool.renderResult;
 	if (!call || !result) throw new Error(`Built-in tool ${tool.name} does not provide renderers.`);
@@ -129,7 +126,7 @@ export function withCompactRendering(
 					],
 					invalidate() {},
 				},
-				() => isCompact() && !context.expanded,
+				() => !context.expanded,
 			);
 		},
 		renderResult(value, options, theme, context) {
@@ -140,7 +137,7 @@ export function withCompactRendering(
 				...context,
 				lastComponent: previous instanceof ToolDisplayComponent ? previous.normal : undefined,
 			});
-			return new ToolDisplayComponent(normal, new Text("", 0, 0), () => isCompact() && !options.expanded);
+			return new ToolDisplayComponent(normal, new Text("", 0, 0), () => !options.expanded);
 		},
 	};
 }

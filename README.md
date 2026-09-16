@@ -29,32 +29,31 @@ workflow. Verify upgrades from an existing installation, not only clean installs
 
 #### Compact tool display
 
-Use **Tool display** in `/suite` to switch between **Normal** and **Compact**. Normal is the default. Suite saves the
-selection as `toolDisplay` in `~/.pi/agent/pi-suite.json` and restores it after restarts and `/reload`.
+Built-in tools show compact summaries by default. Use Pi's native **Ctrl+O** to expand the original details, then press
+it again to return to summaries. There is no separate `/suite` option or saved mode. Legacy `toolDisplay` fields in
+`~/.pi/agent/pi-suite.json` are ignored and left unchanged.
 
-When tool output is collapsed, Compact shows each built-in call with its name, key arguments, and status, such as
+When tool output is collapsed, Suite shows each built-in call with its name, key arguments, and status, such as
 `read src/config.ts:20–80 · done` or `bash pnpm test · running`. File tools show paths; `edit` also shows batch size,
 and `grep`/`find` show the search pattern and directory. Multi-line commands show the first line and a remaining-line
 count. Summaries fit one terminal line, keep path tails when shortened, and reserve room for status. They never dump
 argument JSON, file contents, diffs, or text results. Calls are not grouped. Native tool framing and images are unchanged.
-User messages, assistant text, and final answers stay visible. Switching modes changes tool rows created with Suite's
+User messages, assistant text, and final answers stay visible. Ctrl+O changes tool rows created with Suite's
 renderers, including calls that have already finished.
 
 **Reload limitation:** Pi rebuilds historical rows before the `session_start` hook used to register these renderers.
-After `/reload`, those historical rows keep native rendering, even when Compact is selected. New calls use the saved
-display mode. Suite does not change tool activation or patch the transcript to work around this lifecycle ordering.
+After `/reload`, those historical rows keep native rendering. New calls use Suite's summaries when collapsed.
+Suite does not change tool activation or patch the transcript to work around this lifecycle ordering.
 
 This applies only to Pi's built-in `read`, `bash`, `powershell`, `edit`, `write`, `find`, `grep`, and `ls` tools. Suite's own
 tools, third-party tools, and built-ins replaced by another extension keep their existing display. Third-party extension
 loading and package bundling are unchanged.
 
-No shortcuts or Pi settings are changed. Ctrl+T still controls thinking independently. In Compact mode, native Ctrl+O
-switches between the summary and original expanded details; press it again to return to the summary. The Compact
-preference stays enabled. Normal mode retains Pi's usual collapsed/expanded display. This feature does not change tool
-execution or session data.
+No shortcuts or Pi settings are changed. Ctrl+T still controls thinking independently. This feature does not change
+tool execution or session data.
 
 Suite uses Pi's public tool-definition factories and `renderCall`/`renderResult` APIs. It delegates execution to the native
-tools with the current working directory and trusted settings, and preserves the active tool selection. Normal mode uses
+tools with the current working directory and trusted settings, and preserves the active tool selection. Expanded output uses
 the original renderers. There is no private TUI patch or exact-version restriction.
 
 #### CLI tool discovery

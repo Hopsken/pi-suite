@@ -1,4 +1,4 @@
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
@@ -15,10 +15,9 @@ import {
 	type ToolDefinition,
 	ToolExecutionComponent,
 } from "@earendil-works/pi-coding-agent";
-import { type Component, type TUI, visibleWidth } from "@earendil-works/pi-tui";
+import { type TUI, visibleWidth } from "@earendil-works/pi-tui";
 import { afterEach, expect, test, vi } from "vitest";
 import { compactToolLine, withCompactRendering } from "../src/compact-renderer.ts";
-import { loadToolDisplayMode, saveToolDisplayMode } from "../src/state.ts";
 import { registerToolDisplay } from "../src/tool-display.ts";
 
 initTheme("dark", false);
@@ -99,10 +98,9 @@ test("truncates by terminal cells, preserves path tails and reserves status and 
 test("all eight built-ins show compact summaries only when collapsed, and restore native detail when expanded", () => {
 	const cwd = directory();
 	const ui = { requestRender: vi.fn() } as unknown as TUI;
-	let compact = false;
 	for (const factory of factories) {
 		const original = factory(cwd) as ToolDefinition<any, any>;
-		const wrapped = withCompactRendering(original, () => compact);
+		const wrapped = withCompactRendering(original);
 		expect(wrapped.execute).toBe(original.execute);
 		expect(wrapped.parameters).toBe(original.parameters);
 		expect(wrapped.prepareArguments).toBe(original.prepareArguments);
@@ -123,18 +121,12 @@ test("all eight built-ins show compact summaries only when collapsed, and restor
 		for (const expanded of [false, true, false]) {
 			native.setExpanded(expanded);
 			row.setExpanded(expanded);
-			compact = false;
-			expect(row.render(80)).toEqual(native.render(80));
-			compact = true;
 			if (expanded) {
 				expect(row.render(80)).toEqual(native.render(80));
 			} else {
 				expect(row.render(80).join("\n")).toContain("· failed");
 				expect(row.render(80).join("\n")).not.toMatch(/private-content|private-result/);
 			}
-			compact = false;
-			// No new result or call is needed to restore an existing row.
-			expect(row.render(80)).toEqual(native.render(80));
 		}
 	}
 });
@@ -142,8 +134,7 @@ test("all eight built-ins show compact summaries only when collapsed, and restor
 test("pending, running, partial and completed calls update through public render contexts; native timers stop", () => {
 	vi.useFakeTimers();
 	const cwd = directory();
-	let compact = true;
-	const tool = withCompactRendering(createBashToolDefinition(cwd), () => compact);
+	const tool = withCompactRendering(createBashToolDefinition(cwd));
 	const row = new ToolExecutionComponent(
 		"bash",
 		"live",
@@ -166,14 +157,13 @@ test("pending, running, partial and completed calls update through public render
 	expect(vi.getTimerCount()).toBe(0);
 	expect(row.render(60).join("\n")).toContain("bash printf private · done");
 	expect(row.render(60).join("\n")).not.toContain("private-final");
-	compact = false;
+	row.setExpanded(true);
 	expect(row.render(60).join("\n")).toContain("private-final");
 });
 
 function harness(cwd: string, mode = "tui") {
 	const tools = new Map<string, ToolDefinition<any, any>>();
 	let start: (event: unknown, ctx: ExtensionContext) => void;
-	let widget: (Component & { dispose?: () => void }) | undefined;
 	const ui = { requestRender: vi.fn() } as unknown as TUI; // No private TUI layout.
 	const pi = {
 		on: (_name: string, handler: typeof start) => {
@@ -195,16 +185,11 @@ function harness(cwd: string, mode = "tui") {
 		isProjectTrusted: () => false,
 		sessionManager: { getSessionId: () => "test-session", getSessionFile: () => undefined },
 		ui: {
-			select: vi.fn().mockResolvedValue("Compact"),
 			notify: vi.fn(),
-			setWidget: (_key: string, factory: (ui: TUI) => typeof widget) => {
-				widget?.dispose?.();
-				widget = factory(ui);
-			},
 		},
 	} as unknown as ExtensionContext;
-	const configure = registerToolDisplay(pi as never);
-	return { tools, pi, ctx, ui, configure, start: () => start({}, ctx), dispose: () => widget?.dispose?.() };
+	registerToolDisplay(pi as never);
+	return { tools, pi, ctx, ui, start: () => start({}, ctx) };
 }
 
 test("registration preserves active tools, excludes third-party overrides and skips non-TUI sessions", () => {
@@ -223,63 +208,38 @@ test("registration preserves active tools, excludes third-party overrides and sk
 	expect(headless.pi.registerTool).not.toHaveBeenCalled();
 });
 
-test("mode persists across reloads, updates existing rows, and failed saves preserve the current view", async () => {
-	const cwd = directory();
-	const path = join(cwd, "pi-suite.json");
-	expect(loadToolDisplayMode()).toBe("normal");
-	writeFileSync(path, '{"compactionModel":"example:low","custom":42}');
-	let h = harness(cwd);
-	h.start();
-	const row = new ToolExecutionComponent(
-		"read",
-		"history",
-		{ path: "private.txt" },
-		{},
-		h.tools.get("read"),
-		h.ui,
-		cwd,
-	);
-	expect(row.render(80).join("\n")).toContain("private.txt");
-	await h.configure(h.ctx);
-	expect(row.render(80).join("\n")).toContain("read private.txt · pending");
-	expect(JSON.parse(readFileSync(path, "utf8"))).toEqual({
-		compactionModel: "example:low",
-		custom: 42,
-		toolDisplay: "compact",
-	});
-	h.dispose();
-	h = harness(cwd);
-	h.start();
-	const restored = new ToolExecutionComponent(
-		"read",
-		"history",
-		{ path: "private.txt" },
-		{},
-		h.tools.get("read"),
-		h.ui,
-		cwd,
-	);
-	expect(restored.render(80).join("\n")).toContain("read private.txt · pending");
-	vi.mocked(h.ctx.ui.select).mockResolvedValue(undefined);
-	expect(await h.configure(h.ctx)).toBe(false);
-	vi.mocked(h.ctx.ui.select).mockResolvedValue("Normal");
-	writeFileSync(path, "broken");
-	await h.configure(h.ctx);
-	expect(h.ctx.ui.notify).toHaveBeenLastCalledWith(expect.stringContaining("Could not change"), "error");
-	expect(readFileSync(path, "utf8")).toBe("broken");
-	expect(restored.render(80).join("\n")).toContain("read private.txt · pending");
-	writeFileSync(path, "{}");
-	await h.configure(h.ctx);
-	expect(loadToolDisplayMode()).toBe("normal");
-	expect(restored.render(80).join("\n")).toContain("private.txt");
-	h.dispose();
-	writeFileSync(path, '{"toolDisplay":"invalid"}');
-	expect(() => loadToolDisplayMode()).toThrow("invalid");
-});
+test.each([undefined, "normal", "compact", "invalid"])(
+	"summaries need no setting and ignore legacy mode %s without writing config",
+	(mode) => {
+		const cwd = directory();
+		const path = join(cwd, "pi-suite.json");
+		const saved = JSON.stringify({ compactionModel: "example:low", custom: 42, toolDisplay: mode });
+		if (mode !== undefined) writeFileSync(path, saved);
+		const h = harness(cwd);
+		h.start();
+		const row = new ToolExecutionComponent(
+			"read",
+			"history",
+			{ path: "private.txt" },
+			{},
+			h.tools.get("read"),
+			h.ui,
+			cwd,
+		);
+		expect(row.render(80).join("\n")).toContain("read private.txt · pending");
+		row.setExpanded(true);
+		expect(row.render(80).join("\n")).not.toContain("· pending");
+		row.setExpanded(false);
+		h.start();
+		expect(row.render(80).join("\n")).toContain("read private.txt · pending");
+		expect(h.ctx.ui.notify).not.toHaveBeenCalled();
+		if (mode === undefined) expect(existsSync(path)).toBe(false);
+		else expect(readFileSync(path, "utf8")).toBe(saved);
+	},
+);
 
-test("reload history built before session_start stays native while subsequent rows use the saved mode", () => {
+test("reload history built before session_start stays native while subsequent rows use summaries", () => {
 	const cwd = directory();
-	saveToolDisplayMode("compact");
 	const h = harness(cwd);
 	const args = { path: "history.txt" };
 	// Pi's reload callback constructs historical components before session_start.
@@ -289,8 +249,6 @@ test("reload history built before session_start stays native while subsequent ro
 	expect(history.render(80).join("\n")).toContain("history.txt");
 	expect(history.render(80).join("\n")).not.toContain("· pending");
 	expect(next.render(80).join("\n")).toContain("read history.txt · pending");
-	expect(loadToolDisplayMode()).toBe("compact");
-	h.dispose();
 });
 
 test("delegated execution uses current cwd and native shell settings without changing tool results", async () => {
@@ -312,6 +270,4 @@ test("delegated execution uses current cwd and native shell settings without cha
 		.get("bash")!
 		.execute("bash", { command: 'printf "%s\\n%s" "$PWD" "$SUITE_DISPLAY_TEST"' }, undefined, undefined, current);
 	expect(bash.content).toEqual([{ type: "text", text: `${other}\nfrom-prefix` }]);
-	saveToolDisplayMode("compact");
-	expect(loadToolDisplayMode()).toBe("compact");
 });
