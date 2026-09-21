@@ -19,6 +19,7 @@ import {
 } from "./state.ts";
 import { registerToolDisplay } from "./tool-display.ts";
 import { registerToolsSelector } from "./tools-selector.ts";
+import { registerPushoverNotify } from './pushover-notify.ts';
 
 function errorMessage(value: unknown): string {
 	return value instanceof Error ? value.message : String(value);
@@ -48,6 +49,8 @@ function warnUnavailable(ctx: ExtensionContext, message: string): void {
 /** Registers Pi Suite's integrated workflows. */
 export default function piSuite(pi: ExtensionAPI): void {
 	registerToolDisplay(pi);
+	registerPushoverNotify(pi);
+
 	// The package loads Suite before Subagents, which reads presets during activation.
 	let presetUpdateNotice: string | undefined;
 	let presetUpdateFailed = false;
