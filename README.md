@@ -72,6 +72,18 @@ The package adds `/tools`, an interactive list of every available tool. Toggle t
 to change the active tool set immediately. The selection is stored in the current session branch, restored after reloads,
 and follows branch navigation; tools that are no longer available are discarded when restoring a saved selection.
 
+#### Pushover notifications
+
+Use **Pushover notifications** in `/suite` to turn automatic notifications **on** or **off** (default **off**).
+The choice is saved as `pushover` in `~/.pi/agent/pi-suite.json` and takes effect immediately.
+`/pushover on|off` changes the same saved setting.
+
+Set both `PUSHOVER_TOKEN` (application API token) and `PUSHOVER_USER` (user/group key) in Pi's environment.
+Enabling notifications without both variables shows a warning; no notifications are sent until both are available.
+When enabled, Pi also checks these variables at startup. Notifications only run in interactive TUI mode after at least
+30 seconds of agent activity (`PI_PUSHOVER_MIN_SECONDS` overrides this threshold).
+Use `/pushover test` to send an explicit test notification, including when automatic notifications are off.
+
 #### Compaction model
 
 The package adds `/suite`, an interactive configuration menu. Its **Compaction model** item selects a dedicated model and

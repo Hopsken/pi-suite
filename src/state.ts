@@ -102,6 +102,31 @@ function saveModelSelection(
 	}
 }
 
+export function loadPushoverEnabled(configPath = getConfigPath()): boolean {
+	if (!existsSync(configPath)) return false;
+	const release = acquireConfigLock(configPath);
+	try {
+		const config = parseConfig(readFileSync(configPath, "utf8"), configPath);
+		if (config.pushover === undefined) return false;
+		if (typeof config.pushover !== "boolean") throw new Error(`pushover in ${configPath} is invalid.`);
+		return config.pushover;
+	} finally {
+		release();
+	}
+}
+
+export function savePushoverEnabled(enabled: boolean, configPath = getConfigPath()): void {
+	mkdirSync(dirname(configPath), { recursive: true });
+	const release = acquireConfigLock(configPath);
+	try {
+		const config = existsSync(configPath) ? parseConfig(readFileSync(configPath, "utf8"), configPath) : {};
+		config.pushover = enabled;
+		writeFileSync(configPath, `${JSON.stringify(config, null, 2)}\n`, "utf8");
+	} finally {
+		release();
+	}
+}
+
 export function loadCompactionModelSelection(configPath = getConfigPath()): CompactionModelSelection | undefined {
 	return loadModelSelection("compactionModel", configPath);
 }

@@ -414,6 +414,25 @@ describe("Pi Suite extension", () => {
 		expect(searchResult?.content[0].text).toContain("No historical sessions matched");
 	});
 
+	test("configures Pushover through Suite and returns to the menu after cancellation", async () => {
+		const { commands } = createExtensionApi();
+		const select = vi
+			.fn()
+			.mockResolvedValueOnce("Pushover notifications")
+			.mockResolvedValueOnce(undefined)
+			.mockResolvedValueOnce("Pushover notifications")
+			.mockResolvedValueOnce("off");
+		await commands.get("suite")?.handler("", {
+			mode: "tui",
+			ui: { select, notify: vi.fn() },
+		});
+		expect(select).toHaveBeenNthCalledWith(2, "Pushover notifications (off)", ["on", "off"]);
+		expect(select).toHaveBeenNthCalledWith(3, "Pi Suite Configuration", expect.any(Array));
+		expect(JSON.parse(readFileSync(join(agentDirectory, "pi-suite.json"), "utf8"))).toEqual({
+			pushover: false,
+		});
+	});
+
 	test("persists the historical session reader model and thinking level", async () => {
 		fauxProvider = registerFauxProvider({
 			api: "pi-suite-reader-picker-test",
@@ -488,12 +507,14 @@ describe("Pi Suite extension", () => {
 			"Compaction model",
 			"Session reader model",
 			"Session title model",
+			"Pushover notifications",
 			"Setup agents",
 		]);
 		expect(select).toHaveBeenNthCalledWith(2, "Pi Suite Configuration", [
 			"Compaction model",
 			"Session reader model",
 			"Session title model",
+			"Pushover notifications",
 			"Setup agents",
 		]);
 	});
