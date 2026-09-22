@@ -3,6 +3,7 @@ import { compact, type ExtensionAPI, type ExtensionContext } from "@earendil-wor
 import { installAgentPresets, updateAgentPresets } from "./agent-presets.ts";
 import { registerAvailableCliToolsPrompt } from "./available-cli-tools.ts";
 import { type ModelChoice, ModelSelector } from "./model-selector.ts";
+import { registerPushoverNotify } from "./pushover-notify.ts";
 import { registerSessionHistoryTools } from "./session-history-tools.ts";
 import { generateSessionTitle } from "./session-title.ts";
 import {
@@ -19,7 +20,6 @@ import {
 } from "./state.ts";
 import { registerToolDisplay } from "./tool-display.ts";
 import { registerToolsSelector } from "./tools-selector.ts";
-import { registerPushoverNotify } from './pushover-notify.ts';
 
 function errorMessage(value: unknown): string {
 	return value instanceof Error ? value.message : String(value);
@@ -49,7 +49,7 @@ function warnUnavailable(ctx: ExtensionContext, message: string): void {
 /** Registers Pi Suite's integrated workflows. */
 export default function piSuite(pi: ExtensionAPI): void {
 	registerToolDisplay(pi);
-	registerPushoverNotify(pi);
+	const configurePushover = registerPushoverNotify(pi);
 
 	// The package loads Suite before Subagents, which reads presets during activation.
 	let presetUpdateNotice: string | undefined;
@@ -374,9 +374,14 @@ export default function piSuite(pi: ExtensionAPI): void {
 					"Compaction model",
 					"Session reader model",
 					"Session title model",
+					"Pushover notifications",
 					"Setup agents",
 				]);
 				if (!item) return;
+				if (item === "Pushover notifications") {
+					if (await configurePushover(ctx)) return;
+					continue;
+				}
 				if (item === "Setup agents") {
 					await setupAgents(ctx);
 					return;
