@@ -102,29 +102,45 @@ function saveModelSelection(
 	}
 }
 
-export function loadPushoverEnabled(configPath = getConfigPath()): boolean {
+function loadFlag(key: "pushover" | "thinkAloud", configPath: string): boolean {
 	if (!existsSync(configPath)) return false;
 	const release = acquireConfigLock(configPath);
 	try {
 		const config = parseConfig(readFileSync(configPath, "utf8"), configPath);
-		if (config.pushover === undefined) return false;
-		if (typeof config.pushover !== "boolean") throw new Error(`pushover in ${configPath} is invalid.`);
-		return config.pushover;
+		if (config[key] === undefined) return false;
+		if (typeof config[key] !== "boolean") throw new Error(`${key} in ${configPath} is invalid.`);
+		return config[key];
 	} finally {
 		release();
 	}
 }
 
-export function savePushoverEnabled(enabled: boolean, configPath = getConfigPath()): void {
+function saveFlag(key: "pushover" | "thinkAloud", enabled: boolean, configPath: string): void {
 	mkdirSync(dirname(configPath), { recursive: true });
 	const release = acquireConfigLock(configPath);
 	try {
 		const config = existsSync(configPath) ? parseConfig(readFileSync(configPath, "utf8"), configPath) : {};
-		config.pushover = enabled;
+		config[key] = enabled;
 		writeFileSync(configPath, `${JSON.stringify(config, null, 2)}\n`, "utf8");
 	} finally {
 		release();
 	}
+}
+
+export function loadPushoverEnabled(configPath = getConfigPath()): boolean {
+	return loadFlag("pushover", configPath);
+}
+
+export function savePushoverEnabled(enabled: boolean, configPath = getConfigPath()): void {
+	saveFlag("pushover", enabled, configPath);
+}
+
+export function loadThinkAloudEnabled(configPath = getConfigPath()): boolean {
+	return loadFlag("thinkAloud", configPath);
+}
+
+export function saveThinkAloudEnabled(enabled: boolean, configPath = getConfigPath()): void {
+	saveFlag("thinkAloud", enabled, configPath);
 }
 
 export function loadCompactionModelSelection(configPath = getConfigPath()): CompactionModelSelection | undefined {
