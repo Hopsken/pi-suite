@@ -507,6 +507,7 @@ describe("Pi Suite extension", () => {
 			"Compaction model",
 			"Session reader model",
 			"Session title model",
+			"Think aloud",
 			"Pushover notifications",
 			"Setup agents",
 		]);
@@ -514,6 +515,7 @@ describe("Pi Suite extension", () => {
 			"Compaction model",
 			"Session reader model",
 			"Session title model",
+			"Think aloud",
 			"Pushover notifications",
 			"Setup agents",
 		]);

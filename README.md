@@ -72,6 +72,13 @@ The package adds `/tools`, an interactive list of every available tool. Toggle t
 to change the active tool set immediately. The selection is stored in the current session branch, restored after reloads,
 and follows branch navigation; tools that are no longer available are discarded when restoring a saved selection.
 
+#### Think aloud
+
+Use **Think aloud** in `/suite` to turn the `think_aloud` tool **on** or **off** (default **off**). When on, the agent
+uses it to show brief notes on the reasoning that matters, such as the approach it chose, an assumption, or a change of
+plan. Notes stay visible when tool output is collapsed, so you can also hide Pi's thinking blocks with `Ctrl+T` and still
+follow the key decisions. The choice is saved as `thinkAloud` in `~/.pi/agent/pi-suite.json` and takes effect immediately.
+
 #### Pushover notifications
 
 Use **Pushover notifications** in `/suite` to turn automatic notifications **on** or **off** (default **off**).

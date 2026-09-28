@@ -18,6 +18,7 @@ import {
 	saveSessionReadModelSelection,
 	saveSessionTitleModelSelection,
 } from "./state.ts";
+import { registerThinkAloud } from "./think-aloud.ts";
 import { registerToolDisplay } from "./tool-display.ts";
 import { registerToolsSelector } from "./tools-selector.ts";
 
@@ -50,6 +51,7 @@ function warnUnavailable(ctx: ExtensionContext, message: string): void {
 export default function piSuite(pi: ExtensionAPI): void {
 	registerToolDisplay(pi);
 	const configurePushover = registerPushoverNotify(pi);
+	const configureThinkAloud = registerThinkAloud(pi);
 
 	// The package loads Suite before Subagents, which reads presets during activation.
 	let presetUpdateNotice: string | undefined;
@@ -374,10 +376,15 @@ export default function piSuite(pi: ExtensionAPI): void {
 					"Compaction model",
 					"Session reader model",
 					"Session title model",
+					"Think aloud",
 					"Pushover notifications",
 					"Setup agents",
 				]);
 				if (!item) return;
+				if (item === "Think aloud") {
+					if (await configureThinkAloud(ctx)) return;
+					continue;
+				}
 				if (item === "Pushover notifications") {
 					if (await configurePushover(ctx)) return;
 					continue;
