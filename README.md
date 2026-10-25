@@ -199,9 +199,13 @@ All four packages are pinned and bundled into `pi-suite`, so `pi install npm:pi-
 compaction feature. The suite exposes only the Web Access extension; it does not register `pi-web-access`'s optional
 Librarian skill. Pi Suite's Librarian below is an independently curated subagent preset instead.
 
-Use **Setup agents** in `/suite` once to install Pi Suite's read-only `Explore`, `Librarian`, and `Oracle` subagents
+Use **Setup agents** in `/suite` once to install Pi Suite's `general-purpose` worker and read-only `Explore`, `Librarian`, and `Oracle` subagents
 globally:
 
+- **general-purpose** executes scoped implementation, verification, investigation, and review tasks. It inherits the
+  parent's system prompt and model, but not its conversation. Supply a self-contained brief with file ownership and
+  read-only or editing permissions. It has all built-in tools, configured extensions, and available skills, and does not
+  delegate further. Read-only work is constrained by the brief, not by a tool sandbox.
 - **Explore** provides finder-style behavior and concept discovery, chained searches, call-path tracing, and cross-module
   correlation in an isolated context. It returns concise findings with file and line evidence. Pi should use its direct
   read, grep, and find tools instead for known paths, symbols, and exact strings, and can launch multiple `Explore` agents
@@ -227,8 +231,8 @@ updating them, and applies global Subagents defaults of `disableDefaultAgents: t
 `outputTranscript: false`. Project settings have higher priority and can override these global values. Run `/reload`
 afterward. Scheduling is disabled, and the `Agent` tool has no `schedule` parameter.
 
-All three suite presets hard-override `run_in_background: false`, even if a caller explicitly requests background
-execution, so their result returns in the spawning turn without a redundant completion-notification turn. All three set
+All suite presets hard-override `run_in_background: false`, even if a caller explicitly requests background
+execution, so their result returns in the spawning turn without a redundant completion-notification turn. All set
 `persist_session: false` and `output_transcript: false`; their own sessions and separate `.output` transcript files are not
 retained, but their results remain in the caller's session, and this does not disable Web Access's cache. To retain an
 agent's sessions for `session_search`, set `persist_session: true` in that agent's installed preset and run `/reload`.
@@ -259,12 +263,13 @@ pi install git:github.com/Hopsken/pi-suite
 ```
 
 Restart Pi after installation or run `/reload`, use **Setup agents** in `/suite` once, then run `/reload` again to use
-`Explore`, `Librarian`, and `Oracle`. On startup and `/reload`, Suite updates installed presets when their bundled content
+`general-purpose`, `Explore`, `Librarian`, and `Oracle`. On startup and `/reload`, Suite updates installed presets when their bundled content
 changes, including presets installed before automatic updates were added. Previous files, including custom edits, are saved
 under `$PI_CODING_AGENT_DIR/pi-suite-agent-backups/update-*/`. Reapply any desired edits after a package update; normal
 reloads preserve edits while the bundled content stays the same. Suite tracks applied content hashes in
 `$PI_CODING_AGENT_DIR/.pi-suite-presets.json`. Only global files with Suite preset names are managed; unrelated agents and
-project-local definitions are unchanged. Missing or deleted presets are installed only by **Setup agents**, not on startup.
+project-local definitions are unchanged. Existing Suite installations receive newly bundled presets automatically.
+Presets whose installed revision was recorded and which were later deleted stay deleted until **Setup agents** is run.
 Existing Suite installations also receive a one-time migration of `subagents.json` to the global defaults listed above,
 before Subagents loads. Unrelated settings are preserved. The migration version is recorded alongside preset hashes;
 later reloads and preset updates preserve your subsequent settings changes. Setup explicitly reapplies the defaults.

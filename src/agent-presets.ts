@@ -72,7 +72,8 @@ export function updateAgentPresets(installMissing = false): AgentPresetInstallRe
 	const skipped: string[] = [];
 	for (const name of presets) {
 		const destination = join(agentsDirectory, name);
-		if (!existsSync(destination) && !installMissing) continue;
+		if (!existsSync(destination) && !installMissing && (!hasInstalledPresets || typeof revisions[name] === "string"))
+			continue;
 		const source = join(presetDirectory, name);
 		const content = readFileSync(source);
 		const revision = createHash("sha256").update(content).digest("hex");

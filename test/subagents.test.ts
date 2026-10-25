@@ -122,7 +122,7 @@ describe("Suite agents through the upstream agent loop", () => {
 		return session;
 	}
 
-	test.each(["Explore", "Librarian", "Oracle"])(
+	test.each(["Explore", "Librarian", "Oracle", "general-purpose"])(
 		"%s blocks even when background is requested, returns once, and obeys retention",
 		async (type) => {
 			let parentCalls = 0;
@@ -137,9 +137,15 @@ describe("Suite agents through the upstream agent loop", () => {
 			});
 			const answer = async (context: Context) => {
 				const active = /<active_agent name="([^"]+)"\/>/.exec(context.systemPrompt ?? "")?.[1];
-				if (active === "Explore" || active === "Librarian") {
+				if (active === "Explore" || active === "Librarian" || active === "general-purpose") {
 					childTypes.push(active);
 					expect(context.tools?.map((tool) => tool.name)).not.toContain("Agent");
+					if (active === "general-purpose") {
+						expect(context.systemPrompt).toContain("Suite parent test.");
+						expect(context.tools?.map((tool) => tool.name)).toEqual(
+							expect.arrayContaining(["read", "write", "edit", "bash", "session_search", "session_read"]),
+						);
+					}
 					markChildEntered();
 					await childGate;
 					return fauxAssistantMessage(`${active} evidence for durable retry safety.`);

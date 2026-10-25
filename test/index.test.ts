@@ -207,7 +207,7 @@ describe("Pi Suite extension", () => {
 			maxSubagentDepth: 2,
 		});
 		expect(notify).toHaveBeenCalledWith(
-			"Installed 3 presets. Suite presets use blocking calls and disable session retention. Upstream defaults, workflows, and schedules are disabled. Run /reload; installed Suite presets update automatically when bundled content changes.",
+			"Installed 4 presets. Suite presets use blocking calls and disable session retention. Upstream defaults, workflows, and schedules are disabled. Run /reload; installed Suite presets update automatically when bundled content changes.",
 			"info",
 		);
 
@@ -251,7 +251,7 @@ describe("Pi Suite extension", () => {
 			maxSubagentDepth: 2,
 		});
 		expect(notify).toHaveBeenCalledWith(
-			"All presets were already installed. Left 3 existing definitions unchanged. Suite presets use blocking calls and disable session retention. Upstream defaults, workflows, and schedules are disabled. Run /reload; installed Suite presets update automatically when bundled content changes.",
+			"All presets were already installed. Left 4 existing definitions unchanged. Suite presets use blocking calls and disable session retention. Upstream defaults, workflows, and schedules are disabled. Run /reload; installed Suite presets update automatically when bundled content changes.",
 			"info",
 		);
 	});
@@ -272,7 +272,18 @@ describe("Pi Suite extension", () => {
 		createExtensionApi();
 		const bundled = readFileSync(new URL("../presets/agents/Oracle.md", import.meta.url), "utf8");
 		expect(readFileSync(oracle, "utf8")).toBe(bundled);
-		expect(readdirSync(agents).sort()).toEqual(["Custom.md", "Oracle.md"]);
+		expect(readdirSync(agents).sort()).toEqual([
+			"Custom.md",
+			"Explore.md",
+			"Librarian.md",
+			"Oracle.md",
+			"general-purpose.md",
+		]);
+		const generalPurpose = join(agents, "general-purpose.md");
+		expect(readFileSync(generalPurpose, "utf8")).toBe(
+			readFileSync(new URL("../presets/agents/general-purpose.md", import.meta.url), "utf8"),
+		);
+		writeFileSync(generalPurpose, "Keep my general-purpose customization.");
 		expect(readFileSync(custom, "utf8")).toBe("Unrelated agent.");
 		expect(JSON.parse(readFileSync(settings, "utf8"))).toMatchObject({ maxConcurrent: 3, schedulingEnabled: false });
 		const backups = join(agentDirectory, "pi-suite-agent-backups");
@@ -284,10 +295,13 @@ describe("Pi Suite extension", () => {
 		writeFileSync(oracle, customized);
 		createExtensionApi();
 		expect(readFileSync(oracle, "utf8")).toBe(customized);
+		expect(readFileSync(generalPurpose, "utf8")).toBe("Keep my general-purpose customization.");
 		expect(readdirSync(backups)).toEqual([firstBackup]);
 
 		// Simulate an installed revision from an earlier package release.
-		writeFileSync(join(agentDirectory, ".pi-suite-presets.json"), '{"Oracle.md":"older-bundled-revision"}');
+		const statePath = join(agentDirectory, ".pi-suite-presets.json");
+		const revisions = JSON.parse(readFileSync(statePath, "utf8"));
+		writeFileSync(statePath, JSON.stringify({ ...revisions, "Oracle.md": "older-bundled-revision" }));
 		createExtensionApi();
 		expect(readFileSync(oracle, "utf8")).toBe(bundled);
 		const secondBackup = readdirSync(backups).find((name) => name !== firstBackup)!;

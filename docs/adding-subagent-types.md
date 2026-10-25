@@ -1,6 +1,8 @@
 # Adding a subagent type
 
-Pi Suite bundles [`@tintinweb/pi-subagents`](https://github.com/tintinweb/pi-subagents) and ships three custom types:
+Pi Suite bundles [`@tintinweb/pi-subagents`](https://github.com/tintinweb/pi-subagents) and ships four custom types:
+`general-purpose`, a scoped worker that inherits the parent's system prompt and model, with built-ins, configured extensions,
+and skills available but no conversation inheritance or nested delegation;
 `Explore`, whose isolated read-only context provides finder-style codebase discovery without filling the parent agent's
 context with intermediate searches; `Librarian`, which uses Web Access for authoritative source-code research outside the
 local workspace; and `Oracle`, which provides an independent expert second opinion through GPT-5.6 Sol with high thinking.
@@ -117,7 +119,7 @@ lower-priority global settings; project settings can override them. Scheduling i
 `schedule` parameter after reloading the extension.
 
 Every suite preset sets `run_in_background: false` as a hard override, including when a caller explicitly requests `true`.
-Blocking execution returns the result directly and avoids a redundant completion turn. All three presets set
+Blocking execution returns the result directly and avoids a redundant completion turn. All presets set
 `persist_session: false` and `output_transcript: false`; their own sessions and separate `.output` transcript files are not
 retained, while their results remain in the caller session and Web Access caching remains enabled. To retain an agent's
 sessions for `session_search`, set `persist_session: true` in its installed preset and run `/reload`. Explore additionally
@@ -146,8 +148,10 @@ replacement first saves the old file under `getAgentDir()/pi-suite-agent-backups
 if backup fails, the old preset remains untouched. Reapply desired custom edits after an update. Normal reloads preserve
 those edits until the bundled content changes again.
 
-Automatic updates leave unrelated agents and project-local definitions unchanged. They do not install missing or deleted
-presets. Existing Suite installations also receive a one-time migration of `subagents.json` to the defaults listed above.
+Automatic updates leave unrelated agents and project-local definitions unchanged. Existing Suite installations receive
+newly bundled presets with no recorded revision. A preset with a recorded revision that was later deleted stays deleted;
+Setup can reinstall it. Fresh installations still opt in through Setup. Existing Suite installations also receive a
+one-time migration of `subagents.json` to the defaults listed above.
 The `settingsVersion` in `.pi-suite-presets.json` is recorded only after the settings write succeeds. Unrelated settings and
 later user changes are preserved; invalid JSON is not overwritten and migration retries after repair. Bump the settings
 migration version only when a new settings migration is needed, independently of preset content changes.

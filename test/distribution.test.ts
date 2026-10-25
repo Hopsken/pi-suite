@@ -126,7 +126,7 @@ describe("package distribution", () => {
 		try {
 			const agentsDirectory = resolve(directory, ".pi", "agents");
 			mkdirSync(agentsDirectory, { recursive: true });
-			for (const name of ["Explore", "Librarian", "Oracle"]) {
+			for (const name of ["Explore", "Librarian", "Oracle", "general-purpose"]) {
 				writeFileSync(
 					resolve(agentsDirectory, `${name}.md`),
 					readFileSync(resolve(repositoryRoot, `presets/agents/${name}.md`), "utf8"),
@@ -139,6 +139,7 @@ describe("package distribution", () => {
 				{ name: "Explore", persistSession: false, allowedSubagents: undefined },
 				{ name: "Librarian", persistSession: false, allowedSubagents: undefined },
 				{ name: "Oracle", persistSession: false, allowedSubagents: ["Explore", "Librarian"] },
+				{ name: "general-purpose", persistSession: false, allowedSubagents: undefined },
 			]) {
 				const agent = agents.get(expected.name);
 				expect(agent).toMatchObject({
