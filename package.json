@@ -1,85 +1,88 @@
 {
-	"name": "pi-suite",
-	"version": "0.1.0",
-	"description": "An opinionated Pi coding agent distribution for an AmpCode-level developer experience.",
-	"type": "module",
-	"files": [
-		"docs",
-		"presets",
-		"src",
-		"README.md",
-		"LICENSE"
-	],
-	"scripts": {
-		"clean": "shx rm -rf dist coverage",
-		"build": "tsc -p tsconfig.build.json",
-		"typecheck": "tsc --noEmit",
-		"test": "vitest run",
-		"check": "biome check --error-on-warnings . && pnpm typecheck && pnpm test",
-		"check:fix": "biome check --write --error-on-warnings .",
-		"prepublishOnly": "pnpm clean && pnpm check && pnpm build"
-	},
-	"pi": {
-		"extensions": [
-			"./src/index.ts",
-			"./node_modules/@juicesharp/rpiv-btw/index.ts",
-			"./node_modules/@juicesharp/rpiv-ask-user-question/index.ts",
-			"./node_modules/@tintinweb/pi-subagents/src/index.ts",
-			"./node_modules/pi-web-access/index.ts"
-		]
-	},
-	"peerDependencies": {
-		"@earendil-works/pi-ai": "*",
-		"@earendil-works/pi-coding-agent": "*",
-		"@earendil-works/pi-tui": "*",
-		"typebox": "*"
-	},
-	"dependencies": {
-		"@juicesharp/rpiv-ask-user-question": "2.9.0",
-		"@juicesharp/rpiv-btw": "2.9.0",
-		"@tintinweb/pi-subagents": "0.19.0",
-		"pi-web-access": "0.28.0",
-		"proper-lockfile": "4.1.2"
-	},
-	"bundleDependencies": [
-		"@juicesharp/rpiv-btw",
-		"@juicesharp/rpiv-ask-user-question",
-		"@tintinweb/pi-subagents",
-		"pi-web-access"
-	],
-	"devDependencies": {
-		"@biomejs/biome": "2.5.12",
-		"@earendil-works/pi-ai": "0.85.1",
-		"@earendil-works/pi-coding-agent": "0.85.1",
-		"@earendil-works/pi-tui": "0.85.1",
-		"@types/node": "22.20.2",
-		"@types/proper-lockfile": "4.1.4",
-		"shx": "0.4.0",
-		"typescript": "7.0.2",
-		"vitest": "5.0.0"
-	},
-	"keywords": [
-		"pi-package",
-		"pi-extension",
-		"pi-coding-agent",
-		"compaction",
-		"developer-experience",
-		"llm"
-	],
-	"repository": {
-		"type": "git",
-		"url": "git+https://github.com/Hopsken/pi-suite.git"
-	},
-	"homepage": "https://github.com/Hopsken/pi-suite#readme",
-	"bugs": {
-		"url": "https://github.com/Hopsken/pi-suite/issues"
-	},
-	"license": "MIT",
-	"engines": {
-		"node": ">=22.19.0"
-	},
-	"publishConfig": {
-		"access": "public"
-	},
-	"packageManager": "pnpm@11.16.0"
+  "name": "pi-suite",
+  "version": "0.1.0",
+  "description": "An opinionated Pi coding agent distribution for an AmpCode-level developer experience.",
+  "keywords": [
+    "compaction",
+    "developer-experience",
+    "llm",
+    "pi-coding-agent",
+    "pi-extension",
+    "pi-package"
+  ],
+  "homepage": "https://github.com/Hopsken/pi-suite#readme",
+  "bugs": {
+    "url": "https://github.com/Hopsken/pi-suite/issues"
+  },
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Hopsken/pi-suite.git"
+  },
+  "files": [
+    "docs",
+    "presets",
+    "src",
+    "README.md",
+    "LICENSE"
+  ],
+  "type": "module",
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "clean": "shx rm -rf dist coverage",
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "check": "biome check --error-on-warnings . && pnpm typecheck && pnpm test",
+    "check:fix": "biome check --write --error-on-warnings .",
+    "prepublishOnly": "pnpm clean && pnpm check && pnpm build"
+  },
+  "dependencies": {
+    "@juicesharp/rpiv-ask-user-question": "2.9.0",
+    "@juicesharp/rpiv-btw": "2.9.0",
+    "@tintinweb/pi-subagents": "0.19.0",
+    "pi-web-access": "0.28.0",
+    "proper-lockfile": "4.1.2"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "2.5.12",
+    "@earendil-works/pi-ai": "0.85.1",
+    "@earendil-works/pi-coding-agent": "0.85.1",
+    "@earendil-works/pi-tui": "0.85.1",
+    "@types/node": "22.20.2",
+    "@types/proper-lockfile": "4.1.4",
+    "shx": "0.4.0",
+    "typescript": "7.0.2",
+    "vitest": "5.0.0"
+  },
+  "peerDependencies": {
+    "@earendil-works/pi-ai": "*",
+    "@earendil-works/pi-coding-agent": "*",
+    "@earendil-works/pi-tui": "*",
+    "typebox": "*"
+  },
+  "bundleDependencies": [
+    "@juicesharp/rpiv-ask-user-question",
+    "@juicesharp/rpiv-btw",
+    "@tintinweb/pi-subagents",
+    "pi-web-access"
+  ],
+  "engines": {
+    "node": ">=22.19.0"
+  },
+  "packageManager": "pnpm@11.16.0",
+  "pi": {
+    "extensions": [
+      "./src/index.ts",
+      "./node_modules/@juicesharp/rpiv-btw/index.ts",
+      "./node_modules/@juicesharp/rpiv-ask-user-question/index.ts",
+      "./node_modules/@tintinweb/pi-subagents/src/index.ts",
+      "./node_modules/pi-web-access/index.ts"
+    ],
+    "skills": [
+      "./skills"
+    ]
+  }
 }
