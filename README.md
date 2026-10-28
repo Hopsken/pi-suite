@@ -81,15 +81,22 @@ follow the key decisions. The choice is saved as `thinkAloud` in `~/.pi/agent/pi
 
 #### Pushover notifications
 
-Use **Pushover notifications** in `/suite` to turn automatic notifications **on** or **off** (default **off**).
+Use **Pushover notifications** in `/suite` to turn Pushover notifications **on** or **off** (default **off**).
 The choice is saved as `pushover` in `~/.pi/agent/pi-suite.json` and takes effect immediately.
 `/pushover on|off` changes the same saved setting.
 
+When on, the agent gets a `notify_user` tool. The agent sends a notification when you ask for one (for example,
+"ping me when it is done"), or when a long task finishes or is blocked and needs your attention. Pi does not send a
+notification automatically when a run ends.
+
+Pi still sends "Waiting for your input" automatically when the agent stops for a question or confirmation, because the
+agent cannot call a tool while it waits. This happens once per run, only in interactive TUI mode, and only after at
+least 30 seconds of agent activity (`PI_PUSHOVER_MIN_SECONDS` overrides this threshold).
+
 Set both `PUSHOVER_TOKEN` (application API token) and `PUSHOVER_USER` (user/group key) in Pi's environment.
-Enabling notifications without both variables shows a warning; no notifications are sent until both are available.
-When enabled, Pi also checks these variables at startup. Notifications only run in interactive TUI mode after at least
-30 seconds of agent activity (`PI_PUSHOVER_MIN_SECONDS` overrides this threshold).
-Use `/pushover test` to send an explicit test notification, including when automatic notifications are off.
+Enabling notifications without both variables shows a warning; `notify_user` returns an error until both are available.
+When enabled, Pi also checks these variables at startup.
+Use `/pushover test` to send an explicit test notification, including when notifications are off.
 
 #### Compaction model
 
