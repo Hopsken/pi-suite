@@ -10,6 +10,7 @@ beforeEach(() => {
   vi.stubEnv("PI_CODING_AGENT_DIR", directory);
   vi.stubEnv("PUSHOVER_TOKEN", "token");
   vi.stubEnv("PUSHOVER_USER", "user");
+  vi.stubEnv("PI_PUSHOVER_MIN_SECONDS", "30");
   vi.useFakeTimers();
   vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: true }));
 });

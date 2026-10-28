@@ -1,6 +1,7 @@
 import { existsSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join, resolve } from "node:path";
+import { dirname, join, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import {
   type Context,
   createProvider,
@@ -23,6 +24,8 @@ import { installAgentPresets } from "../src/agent-presets.ts";
 import piSuite from "../src/index.ts";
 import { searchHistoricalSessions } from "../src/session-history/search.ts";
 
+const repositoryRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
+
 function toolResults(context: Context): string[] {
   return context.messages
     .filter((message) => message.role === "toolResult")
@@ -31,23 +34,28 @@ function toolResults(context: Context): string[] {
 
 describe("Suite agents through the upstream agent loop", () => {
   let directory: string;
-  let previousAgentDirectory: string | undefined;
+  let scratch: string;
   let faux: FauxProviderRegistration;
   let session: AgentSession | undefined;
   let releaseChild: (() => void) | undefined;
 
   beforeEach(() => {
     directory = mkdtempSync(join(tmpdir(), "pi-suite-subagents-"));
-    previousAgentDirectory = process.env.PI_CODING_AGENT_DIR;
-    process.env.PI_CODING_AGENT_DIR = directory;
+    // Subagents writes transcripts under os.tmpdir(); a private one makes "nothing written" checkable.
+    scratch = mkdtempSync(join(tmpdir(), "pi-suite-subagents-tmp-"));
+    vi.stubEnv("PI_CODING_AGENT_DIR", directory);
+    vi.stubEnv("TMPDIR", scratch);
     installAgentPresets();
     writeFileSync(
       join(directory, "settings.json"),
       JSON.stringify({
         compaction: { enabled: false },
         retry: { enabled: false },
-        // Exercise the real Suite extension inside Oracle. Web providers are tested separately.
-        extensions: [resolve("src/index.ts")],
+        // Exercise the real Suite and Web Access extensions inside child agents; no web request is made.
+        extensions: [
+          resolve(repositoryRoot, "src/index.ts"),
+          resolve(repositoryRoot, "node_modules/pi-web-access/index.ts"),
+        ],
       }),
     );
     faux = registerFauxProvider({
@@ -67,14 +75,14 @@ describe("Suite agents through the upstream agent loop", () => {
       session = undefined;
     }
     faux.unregister();
-    if (previousAgentDirectory === undefined) delete process.env.PI_CODING_AGENT_DIR;
-    else process.env.PI_CODING_AGENT_DIR = previousAgentDirectory;
+    vi.unstubAllEnvs();
     rmSync(directory, { recursive: true, force: true });
+    rmSync(scratch, { recursive: true, force: true });
   });
 
   async function createParent(): Promise<AgentSession> {
     const { default: subagents } = await vi.importActual<{ default: ExtensionFactory }>(
-      resolve("node_modules/@tintinweb/pi-subagents/src/index.ts"),
+      resolve(repositoryRoot, "node_modules/@tintinweb/pi-subagents/src/index.ts"),
     );
     const api = getApiProvider(faux.api)!;
     const modelRuntime = await ModelRuntime.create({ credentials: new InMemoryCredentialStore(), modelsPath: null });
@@ -135,16 +143,35 @@ describe("Suite agents through the upstream agent loop", () => {
       const childGate = new Promise<void>((resolve) => {
         releaseChild = resolve;
       });
+      // A failed expect inside a provider response only surfaces as a timeout, so collect and assert afterwards.
+      const failures: unknown[] = [];
       const answer = async (context: Context) => {
+        try {
+          return await respond(context);
+        } catch (error) {
+          failures.push(error);
+          markChildEntered();
+          return fauxAssistantMessage("Test assertion failed.");
+        }
+      };
+      const respond = async (context: Context) => {
         const active = /<active_agent name="([^"]+)"\/>/.exec(context.systemPrompt ?? "")?.[1];
+        const names = context.tools?.map((tool) => tool.name) ?? [];
         if (active === "Explore" || active === "Librarian" || active === "general-purpose") {
           childTypes.push(active);
-          expect(context.tools?.map((tool) => tool.name)).not.toContain("Agent");
+          expect(names).not.toContain("Agent");
           if (active === "general-purpose") {
             expect(context.systemPrompt).toContain("Suite parent test.");
-            expect(context.tools?.map((tool) => tool.name)).toEqual(
+            expect(names).toEqual(
               expect.arrayContaining(["read", "write", "edit", "bash", "session_search", "session_read"]),
             );
+          } else {
+            expect(names).toEqual(expect.arrayContaining(["read", "bash", "grep", "find", "ls"]));
+            expect(names).not.toContain("edit");
+            expect(names).not.toContain("write");
+            expect(names).not.toContain("session_search");
+            if (active === "Librarian")
+              expect(names).toEqual(expect.arrayContaining(["web_search", "fetch_content", "get_search_content"]));
           }
           markChildEntered();
           await childGate;
@@ -152,8 +179,17 @@ describe("Suite agents through the upstream agent loop", () => {
         }
         if (active === "Oracle") {
           oracleCalls++;
-          const names = context.tools?.map((tool) => tool.name) ?? [];
-          expect(names).toContain("Agent");
+          expect(names).toEqual(
+            expect.arrayContaining([
+              "read",
+              "bash",
+              "Agent",
+              "session_search",
+              "session_read",
+              "web_search",
+              "fetch_content",
+            ]),
+          );
           expect(names).not.toContain("edit");
           expect(names).not.toContain("write");
           if (oracleCalls <= 2) {
@@ -202,13 +238,16 @@ describe("Suite agents through the upstream agent loop", () => {
       );
       const parent = await createParent();
       const prompt = parent.prompt(`Use ${type} to review retries.`);
-      await childEntered;
+      await Promise.race([childEntered, prompt]);
+      expect(failures).toEqual([]);
       expect(parentCalls).toBe(1);
       expect(parent.messages.filter((message) => message.role === "toolResult")).toHaveLength(0);
       releaseChild!();
       await prompt;
-      // Upstream holds completion nudges for 200ms. Let a duplicate surface before asserting.
-      await new Promise((resolve) => setTimeout(resolve, 350));
+      // Upstream holds completion nudges for 200ms. Wait well past that, then let any turn a duplicate started finish.
+      await new Promise((resolve) => setTimeout(resolve, 1000));
+      await parent.waitForIdle();
+      expect(failures).toEqual([]);
       expect(parentCalls).toBe(2);
       expect(parent.messages.map((message) => message.role)).toEqual(["user", "assistant", "toolResult", "assistant"]);
       expect(childTypes).toEqual(type === "Oracle" ? ["Explore", "Librarian"] : [type]);
@@ -222,12 +261,7 @@ describe("Suite agents through the upstream agent loop", () => {
           )
         : [];
       expect(files).toHaveLength(0);
-      const outputDirectory = join(
-        tmpdir(),
-        `pi-subagents-${process.getuid?.() ?? 0}`,
-        directory.replace(/^\/+|\/+$/g, "").replaceAll("/", "-"),
-      );
-      expect(existsSync(outputDirectory)).toBe(false);
+      expect(readdirSync(scratch).filter((name) => name.startsWith("pi-subagents-"))).toEqual([]);
     },
     20_000,
   );

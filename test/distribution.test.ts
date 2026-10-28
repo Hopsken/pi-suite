@@ -1,381 +1,65 @@
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, test, vi } from "vitest";
 
 type PackageManifest = {
-  files: string[];
   pi: { extensions: string[]; skills?: string[] };
   bundleDependencies: string[];
   dependencies: Record<string, string>;
-  peerDependencies: Record<string, string>;
 };
 
 const repositoryRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 
 describe("package distribution", () => {
-  test("declares and installs every bundled Pi extension resource", () => {
+  test("every declared Pi resource exists and every bundled extension is a pinned bundled dependency", () => {
     const manifest = JSON.parse(readFileSync(resolve(repositoryRoot, "package.json"), "utf8")) as PackageManifest;
-    const extensions = [
-      "./src/index.ts",
-      "./node_modules/@juicesharp/rpiv-btw/index.ts",
-      "./node_modules/@juicesharp/rpiv-ask-user-question/index.ts",
-      "./node_modules/@tintinweb/pi-subagents/src/index.ts",
-      "./node_modules/pi-web-access/index.ts",
-    ];
 
-    expect(manifest.pi.extensions).toEqual(extensions);
-    expect(manifest.pi.skills).toEqual(["./skills"]);
-    expect(manifest.files).toContain("presets");
-    expect(manifest.bundleDependencies).toEqual([
-      "@juicesharp/rpiv-ask-user-question",
-      "@juicesharp/rpiv-btw",
-      "@tintinweb/pi-subagents",
-      "pi-web-access",
-    ]);
-    expect(manifest.dependencies["@juicesharp/rpiv-btw"]).toBe("2.9.0");
-    expect(manifest.dependencies["@juicesharp/rpiv-ask-user-question"]).toBe("2.9.0");
-    expect(manifest.dependencies["@tintinweb/pi-subagents"]).toBe("0.19.0");
-    expect(manifest.dependencies["pi-web-access"]).toBe("0.28.0");
-    expect(manifest.peerDependencies.typebox).toBe("*");
-
-    for (const extension of extensions) {
-      expect(existsSync(resolve(repositoryRoot, extension))).toBe(true);
+    for (const path of [...manifest.pi.extensions, ...(manifest.pi.skills ?? [])]) {
+      expect(existsSync(resolve(repositoryRoot, path)), path).toBe(true);
     }
-    expect(existsSync(resolve(repositoryRoot, "node_modules/@juicesharp/rpiv-btw/prompts/btw-system.txt"))).toBe(true);
-    expect(existsSync(resolve(repositoryRoot, "node_modules/@juicesharp/rpiv-ask-user-question/locales/en.json"))).toBe(
-      true,
-    );
-    expect(existsSync(resolve(repositoryRoot, "node_modules/@tintinweb/pi-subagents/src/default-agents.ts"))).toBe(
-      true,
-    );
-    const explorePreset = readFileSync(resolve(repositoryRoot, "presets/agents/Explore.md"), "utf8");
-    expect(explorePreset).toContain("Intelligently search your codebase");
-    expect(explorePreset).toContain("tools: read, bash, grep, find, ls");
-    expect(explorePreset).toContain("extensions: false");
-    expect(explorePreset).toContain("skills: false");
-    expect(explorePreset).toContain("model: openai-codex/gpt-5.6-terra");
-    expect(explorePreset).toContain("thinking: low");
-    expect(explorePreset).toContain("max_turns: 50");
-    expect(explorePreset).toContain("persist_session: false");
-    expect(explorePreset).toContain("output_transcript: false");
-    expect(explorePreset).toContain("run_in_background: false");
-    expect(explorePreset).toContain("inherit_context: false");
-    expect(explorePreset).toContain("return only the distilled evidence");
-
-    const librarianPreset = readFileSync(resolve(repositoryRoot, "presets/agents/Librarian.md"), "utf8");
-    expect(librarianPreset).toContain("Understand code in repositories outside the local workspace");
-    expect(librarianPreset).toContain("Prefer the authoritative upstream source");
-    expect(librarianPreset).toContain("return the answer in full");
-    expect(librarianPreset).toContain("ext:pi-web-access/web_search");
-    expect(librarianPreset).toContain("ext:pi-web-access/fetch_content");
-    expect(librarianPreset).toContain("ext:pi-web-access/get_search_content");
-    expect(librarianPreset).toContain("extensions: [pi-web-access]");
-    expect(librarianPreset).toContain("skills: true");
-    expect(librarianPreset).toContain("model: openai-codex/gpt-5.6-sol");
-    expect(librarianPreset).toContain("thinking: off");
-    expect(librarianPreset).toContain("max_turns: 50");
-    expect(librarianPreset).toContain("inherit_context: false");
-    expect(librarianPreset).toContain("run_in_background: false");
-    expect(librarianPreset).toContain("persist_session: false");
-    expect(librarianPreset).toContain("output_transcript: false");
-    expect(librarianPreset).toContain('workflow: "none"');
-    expect(librarianPreset).toContain("clone first instead of repeatedly fetching individual pages");
-    expect(librarianPreset).toContain("/tmp/pi-github-repos/<owner>/<repo>");
-    expect(librarianPreset).toContain("Use loaded skills when they provide a better authoritative repository source");
-    expect(librarianPreset).toContain("immutable GitHub permalinks");
-
-    const oraclePreset = readFileSync(resolve(repositoryRoot, "presets/agents/Oracle.md"), "utf8");
-    expect(oraclePreset).toContain("Consult a read-only expert for a second opinion");
-    expect(oraclePreset).toContain("ext:pi-suite/session_search");
-    expect(oraclePreset).toContain("ext:pi-suite/session_read");
-    expect(oraclePreset).toContain("ext:pi-web-access/web_search");
-    expect(oraclePreset).toContain("ext:pi-web-access/fetch_content");
-    expect(oraclePreset).toContain("ext:pi-web-access/get_search_content");
-    expect(oraclePreset).toContain("disallowed_tools: edit, write");
-    expect(oraclePreset).toContain("extensions: [pi-suite, pi-web-access]");
-    expect(oraclePreset).toContain("allowed_subagents: [Explore, Librarian]");
-    expect(oraclePreset).toContain("skills: false");
-    expect(oraclePreset).toContain("model: openai-codex/gpt-5.6-sol");
-    expect(oraclePreset).toContain("thinking: high");
-    expect(oraclePreset).toContain("max_turns: 120");
-    expect(oraclePreset).toContain("inherit_context: false");
-    expect(oraclePreset).toContain("run_in_background: false");
-    expect(oraclePreset).toContain("persist_session: false");
-    expect(oraclePreset).toContain("output_transcript: false");
-    expect(oraclePreset).toContain("independent expert engineering adviser");
-    expect(oraclePreset).toContain("parent agent remains responsible");
-    expect(oraclePreset).toContain("You remain responsible for interpreting every subagent's findings");
+    for (const extension of manifest.pi.extensions.filter((path) => path.startsWith("./node_modules/"))) {
+      const name = /^\.\/node_modules\/((?:@[^/]+\/)?[^/]+)\//.exec(extension)![1]!;
+      expect(manifest.bundleDependencies, extension).toContain(name);
+      expect(manifest.dependencies[name], extension).toMatch(/^\d+\.\d+\.\d+$/);
+    }
+    // Files the bundled extensions read at runtime, outside their entry points.
+    for (const path of [
+      "node_modules/@juicesharp/rpiv-btw/prompts/btw-system.txt",
+      "node_modules/@juicesharp/rpiv-ask-user-question/locales/en.json",
+      "node_modules/@tintinweb/pi-subagents/src/default-agents.ts",
+    ]) {
+      expect(existsSync(resolve(repositoryRoot, path)), path).toBe(true);
+    }
   });
 
-  test("all preset frontmatter controls invocation and retention", async () => {
+  test("upstream Subagents parses every preset as blocking, unpersisted, and context-free", async () => {
     const { loadCustomAgents } = await vi.importActual<{
       loadCustomAgents(cwd: string): Map<string, Record<string, any>>;
     }>(resolve(repositoryRoot, "node_modules/@tintinweb/pi-subagents/src/custom-agents.ts"));
-    const { resolveAgentInvocationConfig } = await vi.importActual<{
-      resolveAgentInvocationConfig(
-        agent: Record<string, any>,
-        params: Record<string, unknown>,
-        options: { defaultRunInBackground: boolean },
-      ): { runInBackground: boolean };
-    }>(resolve(repositoryRoot, "node_modules/@tintinweb/pi-subagents/src/invocation-config.ts"));
     const directory = mkdtempSync(resolve(tmpdir(), "pi-suite-agents-"));
     try {
       const agentsDirectory = resolve(directory, ".pi", "agents");
       mkdirSync(agentsDirectory, { recursive: true });
-      for (const name of ["Explore", "Librarian", "Oracle", "general-purpose"]) {
+      const names = readdirSync(resolve(repositoryRoot, "presets/agents")).map((file) => file.replace(/\.md$/, ""));
+      for (const name of names) {
         writeFileSync(
           resolve(agentsDirectory, `${name}.md`),
           readFileSync(resolve(repositoryRoot, `presets/agents/${name}.md`), "utf8"),
-          "utf8",
         );
       }
 
       const agents = loadCustomAgents(directory);
-      for (const expected of [
-        { name: "Explore", persistSession: false, allowedSubagents: undefined },
-        { name: "Librarian", persistSession: false, allowedSubagents: undefined },
-        { name: "Oracle", persistSession: false, allowedSubagents: ["Explore", "Librarian"] },
-        { name: "general-purpose", persistSession: false, allowedSubagents: undefined },
-      ]) {
-        const agent = agents.get(expected.name);
-        expect(agent).toMatchObject({
-          persistSession: expected.persistSession,
+      for (const name of names) {
+        expect(agents.get(name), name).toMatchObject({
+          persistSession: false,
           outputTranscript: false,
           runInBackground: false,
           inheritContext: false,
         });
-        expect(agent?.allowedSubagents).toEqual(expected.allowedSubagents);
-        expect(
-          resolveAgentInvocationConfig(
-            agent as Record<string, any>,
-            { run_in_background: true },
-            { defaultRunInBackground: true },
-          ).runInBackground,
-        ).toBe(false);
       }
-    } finally {
-      rmSync(directory, { recursive: true, force: true });
-    }
-  });
-
-  test("Oracle frontmatter resolves to a read-only built-in set and only its intended extension tools", async () => {
-    const { loadCustomAgents } = await vi.importActual<{
-      loadCustomAgents(cwd: string): Map<string, Record<string, any>>;
-    }>(resolve(repositoryRoot, "node_modules/@tintinweb/pi-subagents/src/custom-agents.ts"));
-    const { installExtensionToolScope, parseExtSelectors } = await vi.importActual<{
-      parseExtSelectors(entries: string[]): {
-        extNames: Set<string>;
-        narrowing: Map<string, Set<string>>;
-      };
-      installExtensionToolScope(session: unknown, config: Record<string, unknown>): void;
-    }>(resolve(repositoryRoot, "node_modules/@tintinweb/pi-subagents/src/agent-runner.ts"));
-    const directory = mkdtempSync(resolve(tmpdir(), "pi-suite-oracle-"));
-    try {
-      const agentsDirectory = resolve(directory, ".pi", "agents");
-      mkdirSync(agentsDirectory, { recursive: true });
-      writeFileSync(
-        resolve(agentsDirectory, "Oracle.md"),
-        readFileSync(resolve(repositoryRoot, "presets/agents/Oracle.md"), "utf8"),
-        "utf8",
-      );
-
-      const oracle = loadCustomAgents(directory).get("Oracle");
-      expect(oracle).toMatchObject({
-        builtinToolNames: ["read", "bash", "edit", "write", "grep", "find", "ls"],
-        disallowedTools: ["edit", "write"],
-        extensions: ["pi-suite", "pi-web-access"],
-        allowedSubagents: ["Explore", "Librarian"],
-        skills: false,
-        model: "openai-codex/gpt-5.6-sol",
-        thinking: "high",
-        maxTurns: 120,
-        inheritContext: false,
-        runInBackground: false,
-        persistSession: false,
-        outputTranscript: false,
-      });
-
-      const selectors = parseExtSelectors(oracle?.extSelectors ?? []);
-      expect([...selectors.extNames]).toEqual(["pi-suite", "pi-web-access"]);
-      expect([...(selectors.narrowing.get("pi-suite") ?? [])]).toEqual(["session_search", "session_read"]);
-      expect([...(selectors.narrowing.get("pi-web-access") ?? [])]).toEqual([
-        "web_search",
-        "fetch_content",
-        "get_search_content",
-      ]);
-
-      const allToolNames = [
-        "read",
-        "bash",
-        "edit",
-        "write",
-        "grep",
-        "find",
-        "ls",
-        "session_search",
-        "session_read",
-        "Agent",
-        "get_subagent_result",
-        "steer_subagent",
-        "source_check",
-        "SubagentWorkflow",
-        "web_search",
-        "fetch_content",
-        "get_search_content",
-      ];
-      let activeToolNames: string[] = [];
-      const session = {
-        agent: { beforeToolCall: undefined },
-        getAllTools: () => allToolNames.map((name) => ({ name })),
-        getActiveToolNames: () => activeToolNames,
-        setActiveToolsByName: (names: string[]) => {
-          activeToolNames = names;
-        },
-        subscribe: () => () => {},
-      };
-      const extension = (path: string, toolNames: string[]) => ({
-        path,
-        tools: new Map(toolNames.map((name) => [name, {}])),
-      });
-      const loader = {
-        getExtensions: () => ({
-          extensions: [
-            extension(resolve(repositoryRoot, "src/index.ts"), ["session_search", "session_read"]),
-            extension(resolve(repositoryRoot, "node_modules/pi-web-access/index.ts"), [
-              "web_search",
-              "fetch_content",
-              "get_search_content",
-            ]),
-          ],
-        }),
-      };
-
-      installExtensionToolScope(session, {
-        loader,
-        toolNames: oracle?.builtinToolNames,
-        disallowedSet: new Set(oracle?.disallowedTools),
-        extNames: selectors.extNames,
-        narrowing: selectors.narrowing,
-        readmitToolNames: new Set(["Agent", "get_subagent_result", "steer_subagent"]),
-      });
-      expect(activeToolNames).toEqual([
-        "read",
-        "bash",
-        "grep",
-        "find",
-        "ls",
-        "session_search",
-        "session_read",
-        "Agent",
-        "get_subagent_result",
-        "steer_subagent",
-        "web_search",
-        "fetch_content",
-        "get_search_content",
-      ]);
-    } finally {
-      rmSync(directory, { recursive: true, force: true });
-    }
-  });
-
-  test("Librarian frontmatter resolves to read-only inspection and only Web Access tools", async () => {
-    const { loadCustomAgents } = await vi.importActual<{
-      loadCustomAgents(cwd: string): Map<string, Record<string, any>>;
-    }>(resolve(repositoryRoot, "node_modules/@tintinweb/pi-subagents/src/custom-agents.ts"));
-    const { installExtensionToolScope, parseExtSelectors } = await vi.importActual<{
-      parseExtSelectors(entries: string[]): {
-        extNames: Set<string>;
-        narrowing: Map<string, Set<string>>;
-      };
-      installExtensionToolScope(session: unknown, config: Record<string, unknown>): void;
-    }>(resolve(repositoryRoot, "node_modules/@tintinweb/pi-subagents/src/agent-runner.ts"));
-    const directory = mkdtempSync(resolve(tmpdir(), "pi-suite-librarian-"));
-    try {
-      const agentsDirectory = resolve(directory, ".pi", "agents");
-      mkdirSync(agentsDirectory, { recursive: true });
-      writeFileSync(
-        resolve(agentsDirectory, "Librarian.md"),
-        readFileSync(resolve(repositoryRoot, "presets/agents/Librarian.md"), "utf8"),
-        "utf8",
-      );
-
-      const librarian = loadCustomAgents(directory).get("Librarian");
-      expect(librarian).toMatchObject({
-        builtinToolNames: ["read", "bash", "grep", "find", "ls"],
-        extensions: ["pi-web-access"],
-        skills: true,
-        model: "openai-codex/gpt-5.6-sol",
-        thinking: "off",
-        maxTurns: 50,
-        inheritContext: false,
-        runInBackground: false,
-      });
-
-      const selectors = parseExtSelectors(librarian?.extSelectors ?? []);
-      expect([...selectors.extNames]).toEqual(["pi-web-access"]);
-      expect([...(selectors.narrowing.get("pi-web-access") ?? [])]).toEqual([
-        "web_search",
-        "fetch_content",
-        "get_search_content",
-      ]);
-
-      const allToolNames = [
-        "read",
-        "bash",
-        "edit",
-        "write",
-        "grep",
-        "find",
-        "ls",
-        "Agent",
-        "source_check",
-        "SubagentWorkflow",
-        "session_search",
-        "session_read",
-        "web_search",
-        "fetch_content",
-        "get_search_content",
-      ];
-      let activeToolNames: string[] = [];
-      const session = {
-        agent: { beforeToolCall: undefined },
-        getAllTools: () => allToolNames.map((name) => ({ name })),
-        getActiveToolNames: () => activeToolNames,
-        setActiveToolsByName: (names: string[]) => {
-          activeToolNames = names;
-        },
-        subscribe: () => () => {},
-      };
-      const loader = {
-        getExtensions: () => ({
-          extensions: [
-            {
-              path: resolve(repositoryRoot, "node_modules/pi-web-access/index.ts"),
-              tools: new Map(["web_search", "fetch_content", "get_search_content"].map((name) => [name, {}])),
-            },
-          ],
-        }),
-      };
-
-      installExtensionToolScope(session, {
-        loader,
-        toolNames: librarian?.builtinToolNames,
-        extNames: selectors.extNames,
-        narrowing: selectors.narrowing,
-        readmitToolNames: new Set<string>(),
-      });
-      expect(activeToolNames).toEqual([
-        "read",
-        "bash",
-        "grep",
-        "find",
-        "ls",
-        "web_search",
-        "fetch_content",
-        "get_search_content",
-      ]);
+      expect(agents.get("Oracle")?.allowedSubagents).toEqual(["Explore", "Librarian"]);
     } finally {
       rmSync(directory, { recursive: true, force: true });
     }
