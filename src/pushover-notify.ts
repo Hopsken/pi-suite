@@ -91,18 +91,21 @@ export function registerPushoverNotify(pi: ExtensionAPI) {
   });
 
   // Newly registered tools start active; later toggles only change the active set.
-  function applyTool(): void {
-    const others = pi.getActiveTools().filter((name) => name !== NOTIFY_USER_TOOL_NAME);
-    if (!enabled) {
-      if (registered) pi.setActiveTools(others);
-    } else if (registered) {
-      pi.setActiveTools([...others, NOTIFY_USER_TOOL_NAME]);
-    } else {
-      pi.registerTool(notifyUserTool);
-      registered = true;
-    }
+  // Registration must not read the active set: Pi rejects getActiveTools while the extension loads.
+  function register(): void {
+    pi.registerTool(notifyUserTool);
+    registered = true;
   }
-  if (enabled) applyTool();
+  if (enabled) register();
+
+  function applyTool(): void {
+    if (!registered) {
+      if (enabled) register();
+      return;
+    }
+    const others = pi.getActiveTools().filter((name) => name !== NOTIFY_USER_TOOL_NAME);
+    pi.setActiveTools(enabled ? [...others, NOTIFY_USER_TOOL_NAME] : others);
+  }
 
   function warnMissingCredentials(ctx: ExtensionContext): void {
     if (enabled && !configured) ctx.ui.notify(`Pushover cannot send notifications: ${MISSING_CREDENTIALS}`, "warning");

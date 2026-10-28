@@ -1,7 +1,9 @@
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { DefaultResourceLoader, SettingsManager } from "@earendil-works/pi-coding-agent";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
+import piSuite from "../src/index.ts";
 import { NOTIFY_USER_TOOL_NAME, registerPushoverNotify } from "../src/pushover-notify.ts";
 
 let directory: string;
@@ -165,4 +167,26 @@ test("invalid config is preserved and a failed save does not enable notification
   expect(app.ctx.ui.notify).toHaveBeenCalledWith(expect.stringContaining("Could not save"), "error");
   expect(readFileSync(join(directory, "pi-suite.json"), "utf8")).toBe("{invalid");
   expect(app.active()).toEqual(["read"]);
+});
+
+test("Pi's real extension loader loads Suite with every opt-in tool turned on", async () => {
+  // Pi rejects action methods such as getActiveTools while an extension loads; the fake pi above does not.
+  writeFileSync(join(directory, "pi-suite.json"), '{"pushover":true,"thinkAloud":true}');
+  const loader = new DefaultResourceLoader({
+    cwd: directory,
+    agentDir: directory,
+    settingsManager: SettingsManager.inMemory(),
+    extensionFactories: [piSuite],
+    noExtensions: true,
+    noSkills: true,
+    noPromptTemplates: true,
+    noThemes: true,
+    noContextFiles: true,
+  });
+  await loader.reload();
+  const { extensions, errors } = loader.getExtensions();
+  expect(errors).toEqual([]);
+  expect(extensions.flatMap((extension) => [...extension.tools.keys()])).toEqual(
+    expect.arrayContaining([NOTIFY_USER_TOOL_NAME, "think_aloud"]),
+  );
 });
