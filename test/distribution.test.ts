@@ -26,11 +26,11 @@ describe("package distribution", () => {
     ];
 
     expect(manifest.pi.extensions).toEqual(extensions);
-    expect(manifest.pi.skills).toBeUndefined();
+    expect(manifest.pi.skills).toEqual(["./skills"]);
     expect(manifest.files).toContain("presets");
     expect(manifest.bundleDependencies).toEqual([
-      "@juicesharp/rpiv-btw",
       "@juicesharp/rpiv-ask-user-question",
+      "@juicesharp/rpiv-btw",
       "@tintinweb/pi-subagents",
       "pi-web-access",
     ]);
