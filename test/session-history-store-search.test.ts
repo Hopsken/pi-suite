@@ -2,6 +2,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, test } from "vitest";
+import { normalizeRepositoryRemote, repositoryMatches } from "../src/session-history/repository.ts";
 import { searchHistoricalSessions } from "../src/session-history/search.ts";
 import {
   createSessionToolHarness,
@@ -156,9 +157,9 @@ describe("platform-backed session history", () => {
       "no-remote-worktree",
     ]);
 
-    await expect(
-      createSessionToolHarness().search({ query: "repo:." }, searchContext("/not/a/repository")),
-    ).rejects.toThrow("identifiable Git repository");
+    await expect(createSessionToolHarness().search({ query: "repo:." }, searchContext(agentDirectory))).rejects.toThrow(
+      "identifiable Git repository",
+    );
   });
 
   test("skips malformed parent chains without adding diagnostics to valid results", async () => {
@@ -266,5 +267,31 @@ describe("platform-backed session history", () => {
 
     expect(firstRead.details.sessions.map((session) => session.sessionId)).toEqual(["legacy-session"]);
     expect(secondRead.content[0].text).toContain("legacy evidence");
+  });
+
+  test("canonicalizes supported repository remotes without retaining credentials or helper commands", () => {
+    const cases = [
+      ["https://user:secret@GitHub.com/Hopsken/pi-suite.git", "github.com/hopsken/pi-suite"],
+      ["git@github.com:Hopsken/pi-suite.git", "github.com/hopsken/pi-suite"],
+      ["github.com:Hopsken/pi-suite.git", "github.com/hopsken/pi-suite"],
+      ["ssh://git@example.com:2222/Owner/Repo.git", "example.com:2222/owner/repo"],
+      ["file:///tmp/source.git", "/tmp/source"],
+      ["ext::ssh -i /secret/key example %S repo", undefined],
+    ] as const;
+    for (const [input, expected] of cases) {
+      const normalized = normalizeRepositoryRemote(input);
+      expect(normalized).toBe(expected);
+      if (normalized) expect(normalizeRepositoryRemote(normalized)).toBe(normalized);
+    }
+  });
+
+  test("requires an exact host when a repo filter is host-qualified", () => {
+    const repository = {
+      worktreeRoot: "/repo",
+      commonGitDir: "/repo/.git",
+      remote: "mirror.example/github.com/hopsken/pi-suite",
+    };
+    expect(repositoryMatches(repository, "hopsken/pi-suite", undefined)).toBe(true);
+    expect(repositoryMatches(repository, "github.com/hopsken/pi-suite", undefined)).toBe(false);
   });
 });
