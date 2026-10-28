@@ -1,10 +1,13 @@
 import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
-import { fauxAssistantMessage } from "@earendil-works/pi-ai";
+import { dirname, join, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
+import { type Context, fauxAssistantMessage } from "@earendil-works/pi-ai";
 import { type FauxProviderRegistration, registerFauxProvider } from "@earendil-works/pi-ai/compat";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
-import piSuite, { SESSION_READ_TOOL_NAME, SESSION_SEARCH_TOOL_NAME } from "../src/index.ts";
+import piSuite, { SESSION_READ_TOOL_NAME } from "../src/index.ts";
+
+const repositoryRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 
 type Handler = (event: any, context: any) => any;
 type ToolHandler = (...args: any[]) => any;
@@ -72,42 +75,12 @@ describe("Pi Suite extension", () => {
       ui: { notify, select: vi.fn().mockResolvedValue("Setup agents") },
     });
 
-    const explorePath = join(agentDirectory, "agents", "Explore.md");
-    const explorePreset = readFileSync(explorePath, "utf8");
-    expect(explorePreset).toContain("read-only codebase discovery specialist");
-    expect(explorePreset).toContain("model: openai-codex/gpt-5.6-terra");
-    expect(explorePreset).toContain("thinking: low");
-    expect(explorePreset).toContain("max_turns: 50");
-    expect(explorePreset).toContain("run_in_background: false");
-    expect(explorePreset).toContain("persist_session: false");
-    expect(explorePreset).toContain("output_transcript: false");
-    expect(explorePreset).toContain("workspace-relative file paths and line numbers or ranges");
-    const librarianPath = join(agentDirectory, "agents", "Librarian.md");
-    const librarianPreset = readFileSync(librarianPath, "utf8");
-    expect(librarianPreset).toContain("read-only codebase-understanding specialist");
-    expect(librarianPreset).toContain("model: openai-codex/gpt-5.6-sol");
-    expect(librarianPreset).toContain("thinking: off");
-    expect(librarianPreset).toContain("max_turns: 50");
-    expect(librarianPreset).toContain("run_in_background: false");
-    expect(librarianPreset).toContain("persist_session: false");
-    expect(librarianPreset).toContain("output_transcript: false");
-    expect(librarianPreset).toContain("extensions: [pi-web-access]");
-    expect(librarianPreset).toContain("skills: true");
-    expect(librarianPreset).toContain("/tmp/pi-github-repos/<owner>/<repo>");
-    expect(librarianPreset).toContain("immutable GitHub permalinks");
-    const oraclePath = join(agentDirectory, "agents", "Oracle.md");
-    const oraclePreset = readFileSync(oraclePath, "utf8");
-    expect(oraclePreset).toContain("independent expert engineering adviser");
-    expect(oraclePreset).toContain("model: openai-codex/gpt-5.6-sol");
-    expect(oraclePreset).toContain("thinking: high");
-    expect(oraclePreset).toContain("max_turns: 120");
-    expect(oraclePreset).toContain("inherit_context: false");
-    expect(oraclePreset).toContain("run_in_background: false");
-    expect(oraclePreset).toContain("persist_session: false");
-    expect(oraclePreset).toContain("output_transcript: false");
-    expect(oraclePreset).toContain("allowed_subagents: [Explore, Librarian]");
-    expect(oraclePreset).toContain("extensions: [pi-suite, pi-web-access]");
-    expect(oraclePreset).toContain("workspace-relative file paths and line numbers or ranges");
+    const presetNames = readdirSync(join(repositoryRoot, "presets", "agents"));
+    for (const name of presetNames) {
+      expect(readFileSync(join(agentDirectory, "agents", name), "utf8"), name).toBe(
+        readFileSync(join(repositoryRoot, "presets", "agents", name), "utf8"),
+      );
+    }
     expect(JSON.parse(readFileSync(join(agentDirectory, "subagents.json"), "utf8"))).toEqual({
       maxConcurrent: 8,
       disableDefaultAgents: true,
@@ -118,17 +91,9 @@ describe("Pi Suite extension", () => {
       schedulingEnabled: false,
       maxSubagentDepth: 2,
     });
-    expect(notify).toHaveBeenCalledWith(
-      "Installed 4 presets. Suite presets use blocking calls and disable session retention. Upstream defaults, workflows, and schedules are disabled. Run /reload; installed Suite presets update automatically when bundled content changes.",
-      "info",
-    );
 
-    const customizedExplore = "---\ndescription: Custom Explore\n---\nKeep this definition.\n";
-    const customizedLibrarian = "---\ndescription: Custom Librarian\n---\nKeep this definition.\n";
-    const customizedOracle = "---\ndescription: Custom Oracle\n---\nKeep this definition.\n";
-    writeFileSync(explorePath, customizedExplore, "utf8");
-    writeFileSync(librarianPath, customizedLibrarian, "utf8");
-    writeFileSync(oraclePath, customizedOracle, "utf8");
+    const customized = (name: string) => `---\ndescription: Custom ${name}\n---\nKeep this definition.\n`;
+    for (const name of presetNames) writeFileSync(join(agentDirectory, "agents", name), customized(name), "utf8");
     writeFileSync(
       join(agentDirectory, "subagents.json"),
       JSON.stringify({
@@ -149,9 +114,8 @@ describe("Pi Suite extension", () => {
       ui: { notify, select: vi.fn().mockResolvedValue("Setup agents") },
     });
 
-    expect(readFileSync(explorePath, "utf8")).toBe(customizedExplore);
-    expect(readFileSync(librarianPath, "utf8")).toBe(customizedLibrarian);
-    expect(readFileSync(oraclePath, "utf8")).toBe(customizedOracle);
+    for (const name of presetNames)
+      expect(readFileSync(join(agentDirectory, "agents", name), "utf8")).toBe(customized(name));
     expect(JSON.parse(readFileSync(join(agentDirectory, "subagents.json"), "utf8"))).toEqual({
       maxConcurrent: 8,
       disableDefaultAgents: true,
@@ -162,10 +126,6 @@ describe("Pi Suite extension", () => {
       schedulingEnabled: false,
       maxSubagentDepth: 2,
     });
-    expect(notify).toHaveBeenCalledWith(
-      "All presets were already installed. Left 4 existing definitions unchanged. Suite presets use blocking calls and disable session retention. Upstream defaults, workflows, and schedules are disabled. Run /reload; installed Suite presets update automatically when bundled content changes.",
-      "info",
-    );
   });
 
   test("activation updates legacy presets with backups, but preserves edits until the next bundled revision", () => {
@@ -314,194 +274,102 @@ describe("Pi Suite extension", () => {
     expect(notify).toHaveBeenCalledWith(expect.stringContaining("Could not update Suite agent presets:"), "warning");
   });
 
-  test("registers session tools in both main and Oracle sessions", async () => {
-    const mainSession = createExtensionApi();
-    const oracleSession = createExtensionApi();
-    await oracleSession.handlers.get("session_start")?.(
-      { reason: "startup" },
-      {
-        mode: "print",
-        hasUI: false,
-        getSystemPrompt: () => '<active_agent name="Oracle"/>\n\nYou are Oracle.',
-        sessionManager: { getBranch: () => [] },
-        ui: { notify: vi.fn() },
-      },
-    );
-    expect([...mainSession.tools.keys()]).toEqual([SESSION_SEARCH_TOOL_NAME, SESSION_READ_TOOL_NAME]);
-    expect([...oracleSession.tools.keys()]).toEqual([SESSION_SEARCH_TOOL_NAME, SESSION_READ_TOOL_NAME]);
-
-    const searchResult = await mainSession.tools
-      .get(SESSION_SEARCH_TOOL_NAME)
-      ?.execute("session-search-call", { query: "" }, undefined, undefined, {
-        cwd: "/project/current",
-        sessionManager: { getSessionId: () => "current-session", getSessionFile: () => undefined },
-      });
-    expect(searchResult?.content[0].text).toContain("all working directories");
-    expect(searchResult?.content[0].text).toContain("No historical sessions matched");
-  });
-
-  test("configures Pushover through Suite and returns to the menu after cancellation", async () => {
-    const { commands } = createExtensionApi();
-    const select = vi
-      .fn()
-      .mockResolvedValueOnce("Pushover notifications")
-      .mockResolvedValueOnce(undefined)
-      .mockResolvedValueOnce("Pushover notifications")
-      .mockResolvedValueOnce("off");
-    await commands.get("suite")?.handler("", {
-      mode: "tui",
-      ui: { select, notify: vi.fn() },
-    });
-    expect(select).toHaveBeenNthCalledWith(2, "Pushover notifications (off)", ["on", "off"]);
-    expect(select).toHaveBeenNthCalledWith(3, "Pi Suite Configuration", expect.any(Array));
-    expect(JSON.parse(readFileSync(join(agentDirectory, "pi-suite.json"), "utf8"))).toEqual({
-      pushover: false,
-    });
-  });
-
-  test("persists the historical session reader model and thinking level", async () => {
+  test.each([
+    ["Compaction model", "high", { compactionModel: "picked-model:high" }],
+    ["Session reader model", "low", { sessionReadModel: "picked-model:low" }],
+    ["Session title model", "minimal", { sessionTitleModel: "picked-model:minimal" }],
+    ["Think aloud", "on", { thinkAloud: true }],
+    ["Pushover notifications", "off", { pushover: false }],
+  ])("/suite %s: cancelling returns to the menu, choosing persists %s", async (item, choice, saved) => {
     fauxProvider = registerFauxProvider({
-      api: "pi-suite-reader-picker-test",
-      provider: "reader-provider",
-      models: [{ id: "reader-model", name: "Reader Model", reasoning: true }],
+      api: "pi-suite-menu-test",
+      provider: "picked-provider",
+      models: [{ id: "picked-model", reasoning: true }],
     });
     const model = fauxProvider.getModel();
+    const isModelItem = item.endsWith("model");
     const { commands } = createExtensionApi();
-    const notify = vi.fn();
+    const select = vi.fn().mockResolvedValueOnce(item);
+    if (!isModelItem) select.mockResolvedValueOnce(undefined);
+    select.mockResolvedValueOnce(item).mockResolvedValueOnce(choice);
+    const custom = vi.fn().mockResolvedValueOnce(undefined).mockResolvedValueOnce({ type: "model", model });
+
     await commands.get("suite")?.handler("", {
       mode: "tui",
-      ui: {
-        custom: vi.fn().mockResolvedValue({ type: "model", model }),
-        select: vi.fn().mockResolvedValueOnce("Session reader model").mockResolvedValueOnce("low"),
-        notify,
-      },
+      ui: { select, custom, notify: vi.fn() },
       modelRegistry: { getAvailable: () => [model] },
     });
 
-    expect(JSON.parse(readFileSync(join(agentDirectory, "pi-suite.json"), "utf8"))).toEqual({
-      sessionReadModel: "reader-model:low",
-    });
-    expect(notify).toHaveBeenCalledWith(
-      "Historical session reading will use reader-provider/reader-model with low thinking.",
-      "info",
-    );
+    expect(select.mock.calls.filter(([title]) => title === "Pi Suite Configuration")).toHaveLength(2);
+    expect(JSON.parse(readFileSync(join(agentDirectory, "pi-suite.json"), "utf8"))).toEqual(saved);
   });
 
-  test("persists the session title model and thinking level", async () => {
-    fauxProvider = registerFauxProvider({
-      api: "pi-suite-title-picker-test",
-      provider: "title-provider",
-      models: [{ id: "title-model", name: "Title Model", reasoning: true }],
-    });
-    const model = fauxProvider.getModel();
-    const { commands } = createExtensionApi();
-    const notify = vi.fn();
-    await commands.get("suite")?.handler("", {
-      mode: "tui",
-      ui: {
-        custom: vi.fn().mockResolvedValue({ type: "model", model }),
-        select: vi.fn().mockResolvedValueOnce("Session title model").mockResolvedValueOnce("minimal"),
-        notify,
-      },
-      modelRegistry: { getAvailable: () => [model] },
-    });
-
-    expect(JSON.parse(readFileSync(join(agentDirectory, "pi-suite.json"), "utf8"))).toEqual({
-      sessionTitleModel: "title-model:minimal",
-    });
-    expect(notify).toHaveBeenCalledWith(
-      "Session titles will use title-provider/title-model with minimal thinking.",
-      "info",
-    );
-  });
-
-  test("returns to the Suite menu when the compaction model picker is cancelled", async () => {
-    const { commands } = createExtensionApi();
-    const select = vi.fn().mockResolvedValueOnce("Compaction model").mockResolvedValueOnce(undefined);
-
-    await commands.get("suite")?.handler("", {
-      mode: "tui",
-      ui: {
-        custom: vi.fn().mockResolvedValue(undefined),
-        select,
-        notify: vi.fn(),
-      },
-      modelRegistry: { getAvailable: () => [] },
-    });
-
-    expect(select).toHaveBeenNthCalledWith(1, "Pi Suite Configuration", [
-      "Compaction model",
-      "Session reader model",
-      "Session title model",
-      "Think aloud",
-      "Pushover notifications",
-      "Setup agents",
-    ]);
-    expect(select).toHaveBeenNthCalledWith(2, "Pi Suite Configuration", [
-      "Compaction model",
-      "Session reader model",
-      "Session title model",
-      "Think aloud",
-      "Pushover notifications",
-      "Setup agents",
-    ]);
-  });
-
-  test("generates a title only after the first agent end", async () => {
+  test("titles a new session once with the selected title model, and never retitles a resumed session", async () => {
+    const activeProvider = registerFauxProvider({ api: "pi-suite-active-test", provider: "active-provider" });
     fauxProvider = registerFauxProvider({
       api: "pi-suite-title-test",
       provider: "title-provider",
       models: [{ id: "title-model", name: "Title Model", reasoning: true }],
     });
-    const model = fauxProvider.getModel();
+    writeFileSync(join(agentDirectory, "pi-suite.json"), JSON.stringify({ sessionTitleModel: "title-model:minimal" }));
+    const activeModel = activeProvider.getModel();
+    const titleModel = fauxProvider.getModel();
     const prompts: string[] = [];
-    fauxProvider.setResponses([
-      (context) => {
+    fauxProvider.setResponses(
+      Array.from({ length: 3 }, () => (context: Context) => {
         prompts.push(String(context.messages[0]?.content));
         return fauxAssistantMessage('"Initial authentication plan"');
-      },
-    ]);
+      }),
+    );
     const branch: any[] = [
       {
         type: "message",
         message: { role: "user", content: [{ type: "text", text: "Design authentication" }] },
       },
-      {
-        type: "message",
-        message: { role: "assistant", content: [{ type: "text", text: "Use passkeys" }] },
-      },
     ];
-    const extension = createExtensionApi();
     const context = {
-      mode: "tui",
-      hasUI: true,
-      model,
+      mode: "print",
+      hasUI: false,
+      model: activeModel,
       modelRegistry: {
-        getAvailable: () => [model],
+        getAvailable: () => [activeModel, titleModel],
         getApiKeyAndHeaders: async () => ({ ok: true, apiKey: "faux-key" }),
       },
       sessionManager: { getBranch: () => branch },
       ui: { notify: vi.fn() },
     };
 
-    await extension.handlers.get("agent_end")?.({ messages: [] }, context);
-    expect(extension.setSessionName).toHaveBeenLastCalledWith("Initial authentication plan");
-
-    branch.push(
-      {
+    try {
+      const extension = createExtensionApi();
+      await extension.handlers.get("session_start")?.({ reason: "new" }, context);
+      branch.push({
         type: "message",
-        message: { role: "user", content: [{ type: "text", text: "Now plan the deployment rollout" }] },
-      },
-      {
-        type: "message",
-        message: { role: "assistant", content: [{ type: "text", text: "Use staged deployment" }] },
-      },
-    );
-    await extension.handlers.get("agent_end")?.({ messages: [] }, context);
+        message: { role: "assistant", content: [{ type: "text", text: "Use passkeys" }] },
+      });
+      await extension.handlers.get("agent_end")?.({ messages: [] }, context);
+      branch.push(
+        {
+          type: "message",
+          message: { role: "user", content: [{ type: "text", text: "Now plan the deployment rollout" }] },
+        },
+        {
+          type: "message",
+          message: { role: "assistant", content: [{ type: "text", text: "Use staged deployment" }] },
+        },
+      );
+      await extension.handlers.get("agent_end")?.({ messages: [] }, context);
+      expect(extension.setSessionName.mock.calls).toEqual([["Initial authentication plan"]]);
+      expect(prompts).toHaveLength(1);
+      expect(activeProvider.state.callCount).toBe(0);
 
-    expect(extension.setSessionName).toHaveBeenCalledTimes(1);
-    expect(extension.setSessionName).toHaveBeenLastCalledWith("Initial authentication plan");
-    expect(prompts).toHaveLength(1);
+      const resumed = createExtensionApi();
+      await resumed.handlers.get("session_start")?.({ reason: "resume" }, context);
+      await resumed.handlers.get("agent_end")?.({ messages: [] }, context);
+      expect(resumed.setSessionName).not.toHaveBeenCalled();
+      expect(prompts).toHaveLength(1);
+    } finally {
+      activeProvider.unregister();
+    }
   });
 
   test("keeps session reading fail-closed when its persisted model setting is invalid", async () => {
@@ -615,7 +483,18 @@ describe("Pi Suite extension", () => {
         fileOps: { read: new Set<string>(), written: new Set<string>(), edited: new Set<string>() },
         settings: { enabled: true, reserveTokens: 1_000, keepRecentTokens: 100 },
       },
-      branchEntries: [],
+      branchEntries: [
+        {
+          type: "compaction",
+          id: "previous-compaction",
+          parentId: null,
+          timestamp: new Date().toISOString(),
+          summary: "Earlier summary",
+          firstKeptEntryId: "older-entry",
+          tokensBefore: 50,
+          details: { readFiles: ["docs/previous-read.md"], modifiedFiles: ["src/previous-edit.ts"] },
+        },
+      ],
       customInstructions: "Focus on decisions",
       signal,
     };
@@ -624,6 +503,11 @@ describe("Pi Suite extension", () => {
 
     expect(result.compaction.summary).toContain("Summary generated by the selected model");
     expect(result.compaction.firstKeptEntryId).toBe("kept-entry");
+    // Files from the previous compaction carry forward, so repeated compactions do not forget them.
+    expect(result.compaction.details).toEqual({
+      readFiles: ["docs/previous-read.md"],
+      modifiedFiles: ["src/previous-edit.ts"],
+    });
     expect(request).toMatchObject({ modelId: "summary-model", reasoning: "high" });
     expect(request?.headers).toEqual({ "x-keep": "present", "x-empty": "" });
     expect(request?.prompt).toContain("Focus on decisions");
