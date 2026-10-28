@@ -28,123 +28,123 @@ const REQUEST_TIMEOUT_MS = 5000;
 const DEFAULT_MIN_SECONDS = 30;
 
 export function registerPushoverNotify(pi: ExtensionAPI) {
-	const token = process.env.PUSHOVER_TOKEN;
-	const user = process.env.PUSHOVER_USER;
-	const configured = Boolean(token && user);
-	const minSeconds = Number(process.env.PI_PUSHOVER_MIN_SECONDS ?? DEFAULT_MIN_SECONDS);
+  const token = process.env.PUSHOVER_TOKEN;
+  const user = process.env.PUSHOVER_USER;
+  const configured = Boolean(token && user);
+  const minSeconds = Number(process.env.PI_PUSHOVER_MIN_SECONDS ?? DEFAULT_MIN_SECONDS);
 
-	let enabled = false;
-	let loadError: string | undefined;
-	try {
-		enabled = loadPushoverEnabled();
-	} catch (error) {
-		loadError = `Could not load Pushover setting: ${String(error)}`;
-	}
-	let runStartedAt: number | undefined;
-	let promptNotifiedThisRun = false;
+  let enabled = false;
+  let loadError: string | undefined;
+  try {
+    enabled = loadPushoverEnabled();
+  } catch (error) {
+    loadError = `Could not load Pushover setting: ${String(error)}`;
+  }
+  let runStartedAt: number | undefined;
+  let promptNotifiedThisRun = false;
 
-	function warnMissingCredentials(ctx: ExtensionContext): void {
-		if (enabled && !configured) {
-			ctx.ui.notify("Pushover cannot send notifications: set PUSHOVER_TOKEN and PUSHOVER_USER", "warning");
-		}
-	}
+  function warnMissingCredentials(ctx: ExtensionContext): void {
+    if (enabled && !configured) {
+      ctx.ui.notify("Pushover cannot send notifications: set PUSHOVER_TOKEN and PUSHOVER_USER", "warning");
+    }
+  }
 
-	function setEnabled(value: boolean, ctx: ExtensionContext): void {
-		try {
-			savePushoverEnabled(value);
-			enabled = value;
-			ctx.ui.notify(`Pushover ${enabled ? "on" : "off"}`, "info");
-			warnMissingCredentials(ctx);
-		} catch (error) {
-			ctx.ui.notify(`Could not save Pushover setting: ${String(error)}`, "error");
-		}
-	}
+  function setEnabled(value: boolean, ctx: ExtensionContext): void {
+    try {
+      savePushoverEnabled(value);
+      enabled = value;
+      ctx.ui.notify(`Pushover ${enabled ? "on" : "off"}`, "info");
+      warnMissingCredentials(ctx);
+    } catch (error) {
+      ctx.ui.notify(`Could not save Pushover setting: ${String(error)}`, "error");
+    }
+  }
 
-	async function send(title: string, message: string): Promise<string | undefined> {
-		const body = new URLSearchParams({ token: token!, user: user!, title, message });
-		try {
-			const res = await fetch(PUSHOVER_URL, {
-				method: "POST",
-				body,
-				signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
-			});
-			if (res.ok) return undefined;
-			const text = await res.text().catch(() => "");
-			return `HTTP ${res.status} ${text}`.trim();
-		} catch (err) {
-			return err instanceof Error ? err.message : String(err);
-		}
-	}
+  async function send(title: string, message: string): Promise<string | undefined> {
+    const body = new URLSearchParams({ token: token!, user: user!, title, message });
+    try {
+      const res = await fetch(PUSHOVER_URL, {
+        method: "POST",
+        body,
+        signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+      });
+      if (res.ok) return undefined;
+      const text = await res.text().catch(() => "");
+      return `HTTP ${res.status} ${text}`.trim();
+    } catch (err) {
+      return err instanceof Error ? err.message : String(err);
+    }
+  }
 
-	function sessionTitle(ctx: ExtensionContext): string {
-		return `Pi · ${ctx.sessionManager.getSessionName() ?? basename(ctx.cwd)}`;
-	}
+  function sessionTitle(ctx: ExtensionContext): string {
+    return `Pi · ${ctx.sessionManager.getSessionName() ?? basename(ctx.cwd)}`;
+  }
 
-	function longEnough(): boolean {
-		return runStartedAt !== undefined && Date.now() - runStartedAt >= minSeconds * 1000;
-	}
+  function longEnough(): boolean {
+    return runStartedAt !== undefined && Date.now() - runStartedAt >= minSeconds * 1000;
+  }
 
-	function notify(ctx: ExtensionContext, message: string): void {
-		if (!configured || !enabled || ctx.mode !== "tui") return;
-		void send(sessionTitle(ctx), message).then((error) => {
-			if (error && ctx.hasUI) ctx.ui.notify(`Pushover failed: ${error}`, "warning");
-		});
-	}
+  function notify(ctx: ExtensionContext, message: string): void {
+    if (!configured || !enabled || ctx.mode !== "tui") return;
+    void send(sessionTitle(ctx), message).then((error) => {
+      if (error && ctx.hasUI) ctx.ui.notify(`Pushover failed: ${error}`, "warning");
+    });
+  }
 
-	pi.on("session_start", async (event, ctx) => {
-		if (event.reason === "startup" && ctx.hasUI) {
-			if (loadError) ctx.ui.notify(loadError, "warning");
-			warnMissingCredentials(ctx);
-		}
-	});
+  pi.on("session_start", async (event, ctx) => {
+    if (event.reason === "startup" && ctx.hasUI) {
+      if (loadError) ctx.ui.notify(loadError, "warning");
+      warnMissingCredentials(ctx);
+    }
+  });
 
-	pi.on("agent_start", async () => {
-		// Retries/compaction can start several low-level runs; keep the first timestamp.
-		runStartedAt ??= Date.now();
-	});
+  pi.on("agent_start", async () => {
+    // Retries/compaction can start several low-level runs; keep the first timestamp.
+    runStartedAt ??= Date.now();
+  });
 
-	pi.on("ui_prompt_start", async (_event, ctx) => {
-		// Only prompts raised while the agent is running; skip ones from idle commands.
-		if (runStartedAt === undefined || promptNotifiedThisRun || !longEnough()) return;
-		promptNotifiedThisRun = true;
-		notify(ctx, "Waiting for your input");
-	});
+  pi.on("ui_prompt_start", async (_event, ctx) => {
+    // Only prompts raised while the agent is running; skip ones from idle commands.
+    if (runStartedAt === undefined || promptNotifiedThisRun || !longEnough()) return;
+    promptNotifiedThisRun = true;
+    notify(ctx, "Waiting for your input");
+  });
 
-	pi.on("agent_settled", async (_event, ctx) => {
-		if (longEnough()) notify(ctx, "Task done");
-		runStartedAt = undefined;
-		promptNotifiedThisRun = false;
-	});
+  pi.on("agent_settled", async (_event, ctx) => {
+    if (longEnough()) notify(ctx, "Task done");
+    runStartedAt = undefined;
+    promptNotifiedThisRun = false;
+  });
 
-	pi.registerCommand("pushover", {
-		description: "Pushover notifications: test | on | off",
-		getArgumentCompletions: (prefix) => {
-			const items = ["test", "on", "off"].filter((v) => v.startsWith(prefix)).map((v) => ({ value: v, label: v }));
-			return items.length > 0 ? items : null;
-		},
-		handler: async (args, ctx) => {
-			const arg = args.trim();
-			if (arg === "on" || arg === "off") {
-				setEnabled(arg === "on", ctx);
-				return;
-			}
-			if (arg === "test") {
-				if (!configured) {
-					ctx.ui.notify("Pushover not configured: set PUSHOVER_TOKEN and PUSHOVER_USER", "error");
-					return;
-				}
-				const error = await send(sessionTitle(ctx), "Test notification");
-				ctx.ui.notify(error ? `Pushover failed: ${error}` : "Pushover test sent", error ? "error" : "info");
-				return;
-			}
-			const state = !enabled ? "off" : configured ? "on" : "on (not configured)";
-			ctx.ui.notify(`Pushover: ${state} (min ${minSeconds}s, tui only)`, "info");
-		},
-	});
-	return async (ctx: ExtensionContext): Promise<boolean> => {
-		const choice = await ctx.ui.select(`Pushover notifications (${enabled ? "on" : "off"})`, ["on", "off"]);
-		if (!choice) return false;
-		setEnabled(choice === "on", ctx);
-		return true;
-	};
+  pi.registerCommand("pushover", {
+    description: "Pushover notifications: test | on | off",
+    getArgumentCompletions: (prefix) => {
+      const items = ["test", "on", "off"].filter((v) => v.startsWith(prefix)).map((v) => ({ value: v, label: v }));
+      return items.length > 0 ? items : null;
+    },
+    handler: async (args, ctx) => {
+      const arg = args.trim();
+      if (arg === "on" || arg === "off") {
+        setEnabled(arg === "on", ctx);
+        return;
+      }
+      if (arg === "test") {
+        if (!configured) {
+          ctx.ui.notify("Pushover not configured: set PUSHOVER_TOKEN and PUSHOVER_USER", "error");
+          return;
+        }
+        const error = await send(sessionTitle(ctx), "Test notification");
+        ctx.ui.notify(error ? `Pushover failed: ${error}` : "Pushover test sent", error ? "error" : "info");
+        return;
+      }
+      const state = !enabled ? "off" : configured ? "on" : "on (not configured)";
+      ctx.ui.notify(`Pushover: ${state} (min ${minSeconds}s, tui only)`, "info");
+    },
+  });
+  return async (ctx: ExtensionContext): Promise<boolean> => {
+    const choice = await ctx.ui.select(`Pushover notifications (${enabled ? "on" : "off"})`, ["on", "off"]);
+    if (!choice) return false;
+    setEnabled(choice === "on", ctx);
+    return true;
+  };
 }
