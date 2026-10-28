@@ -67,27 +67,17 @@ describe("available CLI tools prompt", () => {
     const handlers = register();
     await startSession(handlers);
 
-    expect(handlers.beforeAgentStart({ systemPrompt: "Base prompt" })).toEqual({
-      systemPrompt: [
-        "Base prompt",
-        "",
-        "## Available CLI tools",
-        "The following commonly used CLI tools were detected on PATH: `tmux`, ripgrep (`rg`), `ast-grep`, `mise`, `asdf`, Nix CLI (`nix`), GitHub CLI (`gh`), GitLab CLI (`glab`).",
-        "Use them directly when appropriate; availability does not imply that a tool is configured or that its services are running.",
-      ].join("\n"),
-    });
-  });
-
-  test("does not mistake the unrelated sg executable for ast-grep", async () => {
-    addCommand("sg");
-    const handlers = register();
-    await startSession(handlers);
-
-    expect(handlers.beforeAgentStart({ systemPrompt: "Base prompt" })).toBeUndefined();
+    const result = handlers.beforeAgentStart({ systemPrompt: "Base prompt" }) as { systemPrompt: string } | undefined;
+    const prompt = result?.systemPrompt ?? "";
+    expect(prompt).toMatch(/^Base prompt\n\n## Available CLI tools\n/);
+    const listed = [...prompt.matchAll(/`([^`]+)`/g)].map((match) => match[1]);
+    expect(listed).toEqual(["tmux", "rg", "ast-grep", "mise", "asdf", "nix", "gh", "glab"]);
   });
 
   test("does not change the prompt when no supported executable is available", async () => {
     addCommand("unknown-tool");
+    // sg is often an unrelated command, so it alone does not count as ast-grep.
+    addCommand("sg");
     const handlers = register();
     await startSession(handlers);
 

@@ -1,3 +1,4 @@
+import { execFile } from "node:child_process";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { ModelThinkingLevel } from "@earendil-works/pi-ai";
@@ -48,6 +49,18 @@ export function createSessionToolHarness(thinkingLevel: ModelThinkingLevel = "of
     registerCommand: () => {},
     on: () => {},
     getThinkingLevel: () => thinkingLevel,
+    // Real processes, so repository detection runs git the way Pi does.
+    exec: (command: string, args: string[], options: { cwd?: string }) =>
+      new Promise((resolve) =>
+        execFile(command, args, { cwd: options.cwd }, (error, stdout, stderr) =>
+          resolve({
+            stdout,
+            stderr,
+            code: error ? (typeof error.code === "number" ? error.code : 1) : 0,
+            killed: false,
+          }),
+        ),
+      ),
   } as never);
 
   const execute = <T>(

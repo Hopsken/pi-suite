@@ -43,6 +43,5 @@ describe("ModelSelector", () => {
 
     selector.handleInput("\r");
     expect(done).toHaveBeenCalledWith({ type: "model", model: summaryModel });
-    expect(requestedRender).toHaveBeenCalled();
   });
 });

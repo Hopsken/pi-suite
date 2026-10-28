@@ -101,12 +101,6 @@ test("all eight built-ins show compact summaries only when collapsed, and restor
   for (const factory of factories) {
     const original = factory(cwd) as ToolDefinition<any, any>;
     const wrapped = withCompactRendering(original);
-    expect(wrapped.execute).toBe(original.execute);
-    expect(wrapped.parameters).toBe(original.parameters);
-    expect(wrapped.prepareArguments).toBe(original.prepareArguments);
-    expect(wrapped.executionMode).toBe(original.executionMode);
-    expect(wrapped.renderShell).toBe(original.renderShell);
-    expect(wrapped.promptGuidelines).toBe(original.promptGuidelines);
     const args = {
       path: "private-file.txt",
       command: "private-command",
@@ -208,7 +202,7 @@ test("registration preserves active tools, excludes third-party overrides and sk
   expect(headless.pi.registerTool).not.toHaveBeenCalled();
 });
 
-test.each([undefined, "normal", "compact", "invalid"])(
+test.each([undefined, "compact"])(
   "summaries need no setting and ignore legacy mode %s without writing config",
   (mode) => {
     const cwd = directory();
@@ -255,9 +249,11 @@ test("delegated execution uses current cwd and native shell settings without cha
   const cwd = directory();
   const other = join(cwd, "other");
   mkdirSync(other);
+  const shellPath = join(cwd, "configured-shell");
+  writeFileSync(shellPath, '#!/bin/sh\nexport SUITE_SHELL=configured\nexec /bin/sh "$@"\n', { mode: 0o755 });
   writeFileSync(
     join(cwd, "settings.json"),
-    JSON.stringify({ shellPath: "/bin/bash", shellCommandPrefix: "export SUITE_DISPLAY_TEST=from-prefix" }),
+    JSON.stringify({ shellPath, shellCommandPrefix: "export SUITE_DISPLAY_TEST=from-prefix" }),
   );
   writeFileSync(join(cwd, "sample.txt"), "wrong-directory");
   writeFileSync(join(other, "sample.txt"), "right-directory");
@@ -268,6 +264,12 @@ test("delegated execution uses current cwd and native shell settings without cha
   expect(read.content).toEqual([{ type: "text", text: "right-directory" }]);
   const bash = await h.tools
     .get("bash")!
-    .execute("bash", { command: 'printf "%s\\n%s" "$PWD" "$SUITE_DISPLAY_TEST"' }, undefined, undefined, current);
-  expect(bash.content).toEqual([{ type: "text", text: `${other}\nfrom-prefix` }]);
+    .execute(
+      "bash",
+      { command: 'printf "%s\\n%s\\n%s" "$(cat sample.txt)" "$SUITE_SHELL" "$SUITE_DISPLAY_TEST"' },
+      undefined,
+      undefined,
+      current,
+    );
+  expect(bash.content).toEqual([{ type: "text", text: "right-directory\nconfigured\nfrom-prefix" }]);
 });

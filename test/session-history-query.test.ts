@@ -2,7 +2,6 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, test } from "vitest";
-import { parseSessionQuery } from "../src/session-history/query.ts";
 import { createSessionToolHarness, searchContext, TEST_TIMESTAMP, writeSession } from "./session-history-fixtures.ts";
 
 describe("session_search query behavior", () => {
@@ -65,15 +64,6 @@ describe("session_search query behavior", () => {
     expect(result.content[0].text).toContain("/project/query with spaces");
   });
 
-  test("accepts repository filters", async () => {
-    const parsed = parseSessionQuery("repo:. repo:hopsken/pi-suite");
-    expect(parsed.clauses.map((clause) => [clause.name, clause.value])).toEqual([
-      ["repo", "."],
-      ["repo", "hopsken/pi-suite"],
-    ]);
-    expect(parsed.requiresContent).toBe(true);
-  });
-
   test("searches for a colon inside a quoted phrase instead of treating it as a filter", async () => {
     const result = await createSessionToolHarness().search(
       { query: '"error: ENOENT"' },
@@ -84,16 +74,17 @@ describe("session_search query behavior", () => {
   });
 
   test.each([
-    ["unknown filter", "wat:x"],
-    ["missing filter value", "name:"],
-    ["unterminated quote", '"broken'],
-    ["empty phrase", '""'],
-    ["relative cwd", "cwd:relative"],
-    ["invalid date", "after:999999999999999999999d"],
-    ["oversized query", `x${"x".repeat(4096)}`],
-  ])("rejects an %s rather than changing its meaning", async (_case, query) => {
+    ["unknown filter", "wat:x", "Unsupported filter: wat"],
+    ["missing filter value", "name:", "Missing value for name."],
+    ["unterminated quote", '"broken', "Malformed quoted query."],
+    ["empty phrase", '""', "Quoted query values must not be empty."],
+    ["relative cwd", "cwd:relative", "cwd must be absolute or '.'."],
+    ["invalid date", "after:999999999999999999999d", "Invalid date: 999999999999999999999d"],
+    ["oversized query", `x${"x".repeat(4096)}`, "Query exceeds 4 KiB."],
+  ])("rejects an %s rather than changing its meaning", async (_case, query, message) => {
+    // The agent sees this message and must be able to fix its query from it.
     await expect(
       createSessionToolHarness().search({ query }, searchContext("/project/query with spaces")),
-    ).rejects.toThrow();
+    ).rejects.toThrow(message);
   });
 });

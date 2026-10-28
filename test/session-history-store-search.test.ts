@@ -2,6 +2,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, test } from "vitest";
+import { normalizeRepositoryRemote, repositoryMatches } from "../src/session-history/repository.ts";
 import { searchHistoricalSessions } from "../src/session-history/search.ts";
 import {
   createSessionToolHarness,
@@ -55,9 +56,7 @@ describe("platform-backed session history", () => {
     const tools = createSessionToolHarness();
 
     const global = await tools.search({ query: '"shared evidence"' }, searchContext("/project/one"));
-    expect(global.details.sessions.map((session) => session.sessionId)).toEqual(["history-one", "history-two"]);
-    expect(global.details.sessions.every((session) => session.cwd.startsWith("/project/"))).toBe(true);
-    expect(global.details).toMatchObject({ count: 2, hasMore: false });
+    // The agent reads the JSON envelope, not details.
     const envelope = JSON.parse(global.content[0].text);
     expect(envelope).toMatchObject({ count: 2, hasMore: false });
     expect(
@@ -156,9 +155,9 @@ describe("platform-backed session history", () => {
       "no-remote-worktree",
     ]);
 
-    await expect(
-      createSessionToolHarness().search({ query: "repo:." }, searchContext("/not/a/repository")),
-    ).rejects.toThrow("identifiable Git repository");
+    await expect(createSessionToolHarness().search({ query: "repo:." }, searchContext(agentDirectory))).rejects.toThrow(
+      "identifiable Git repository",
+    );
   });
 
   test("skips malformed parent chains without adding diagnostics to valid results", async () => {
@@ -234,9 +233,8 @@ describe("platform-backed session history", () => {
     expect(result.details.sessions.map((session) => session.sessionId)).toEqual(["filtered-session"]);
 
     const wrongCase = await tools.search({ query: "file:src/queue.ts" }, searchContext("/Project/CaseSensitive"));
-    expect(process.platform === "win32" ? wrongCase.details.sessions.length : 0).toBe(
-      wrongCase.details.sessions.length,
-    );
+    // Paths are case-sensitive except on Windows.
+    if (process.platform !== "win32") expect(wrongCase.details.sessions).toEqual([]);
     await expect(tools.search({ query: "", limit: 51 }, searchContext("/Project/CaseSensitive"))).rejects.toThrow(
       "1 to 50",
     );
@@ -266,5 +264,31 @@ describe("platform-backed session history", () => {
 
     expect(firstRead.details.sessions.map((session) => session.sessionId)).toEqual(["legacy-session"]);
     expect(secondRead.content[0].text).toContain("legacy evidence");
+  });
+
+  test("canonicalizes supported repository remotes without retaining credentials or helper commands", () => {
+    const cases = [
+      ["https://user:secret@GitHub.com/Hopsken/pi-suite.git", "github.com/hopsken/pi-suite"],
+      ["git@github.com:Hopsken/pi-suite.git", "github.com/hopsken/pi-suite"],
+      ["github.com:Hopsken/pi-suite.git", "github.com/hopsken/pi-suite"],
+      ["ssh://git@example.com:2222/Owner/Repo.git", "example.com:2222/owner/repo"],
+      ["file:///tmp/source.git", "/tmp/source"],
+      ["ext::ssh -i /secret/key example %S repo", undefined],
+    ] as const;
+    for (const [input, expected] of cases) {
+      const normalized = normalizeRepositoryRemote(input);
+      expect(normalized).toBe(expected);
+      if (normalized) expect(normalizeRepositoryRemote(normalized)).toBe(normalized);
+    }
+  });
+
+  test("requires an exact host when a repo filter is host-qualified", () => {
+    const repository = {
+      worktreeRoot: "/repo",
+      commonGitDir: "/repo/.git",
+      remote: "mirror.example/github.com/hopsken/pi-suite",
+    };
+    expect(repositoryMatches(repository, "hopsken/pi-suite", undefined)).toBe(true);
+    expect(repositoryMatches(repository, "github.com/hopsken/pi-suite", undefined)).toBe(false);
   });
 });

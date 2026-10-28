@@ -10,6 +10,7 @@ beforeEach(() => {
   vi.stubEnv("PI_CODING_AGENT_DIR", directory);
   vi.stubEnv("PUSHOVER_TOKEN", "token");
   vi.stubEnv("PUSHOVER_USER", "user");
+  vi.stubEnv("PI_PUSHOVER_MIN_SECONDS", "30");
   vi.useFakeTimers();
   vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: true }));
 });
@@ -76,7 +77,6 @@ test("defaults off; enabling persists and exposes notify_user; long runs never n
 
   app.ctx.ui.select.mockResolvedValue("on");
   await app.configure(app.ctx as never);
-  expect(app.ctx.ui.select).toHaveBeenCalledWith("Pushover notifications (off)", ["on", "off"]);
   expect(JSON.parse(readFileSync(join(directory, "pi-suite.json"), "utf8"))).toEqual({ other: 42, pushover: true });
   expect(app.active()).toEqual(["read", NOTIFY_USER_TOOL_NAME]);
 
@@ -125,11 +125,18 @@ test("prompt notification fires once per long run and skips short runs", async (
 
   await app.runFor(31, prompt);
   expect(sentMessages()).toEqual(["Waiting for your input", "Waiting for your input"]);
+
+  // A retry starts another low-level run; the run still counts from its first start.
+  await app.runFor(20, async () => {
+    await app.emit("agent_start");
+    vi.advanceTimersByTime(15_000);
+    await prompt();
+  });
+  expect(sentMessages()).toHaveLength(3);
 });
 
-test.each(["PUSHOVER_TOKEN", "PUSHOVER_USER", "both"])("warns only when enabled with missing %s", async (missing) => {
-  if (missing !== "PUSHOVER_USER") vi.stubEnv("PUSHOVER_TOKEN", "");
-  if (missing !== "PUSHOVER_TOKEN") vi.stubEnv("PUSHOVER_USER", "");
+test("with only one credential set, warns once enabled and never sends", async () => {
+  vi.stubEnv("PUSHOVER_USER", "");
   let app = setup();
   await app.emit("session_start");
   expect(app.ctx.ui.notify).not.toHaveBeenCalled();

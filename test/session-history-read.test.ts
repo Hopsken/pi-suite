@@ -79,7 +79,7 @@ describe("question-directed historical session reading", () => {
                 type: "toolCall",
                 id: "config-call",
                 name: "read",
-                arguments: { path: "queue.json", apiKey: "reader-secret-that-must-not-leak" },
+                arguments: { path: "queue.json", apiKey: "reader-argument-kept-as-evidence" },
               },
             ],
             stopReason: "toolUse",
@@ -131,7 +131,7 @@ describe("question-directed historical session reading", () => {
       reasoning: "high",
     });
     expect(request?.prompt).toContain("The team selected the queue");
-    expect(request?.prompt).toContain("reader-secret-that-must-not-leak");
+    expect(request?.prompt).toContain("reader-argument-kept-as-evidence");
   });
 
   test("fails closed when the explicitly selected model cannot authenticate", async () => {
@@ -231,7 +231,7 @@ describe("question-directed historical session reading", () => {
     ).rejects.toThrow("cancelled by test");
   });
 
-  test("rejects empty questions, the current session, and ambiguous prefixes before inference", async () => {
+  test("rejects empty questions, the current session, ambiguous prefixes, and paths before inference", async () => {
     writeSession(agentDirectory, {
       id: "ambiguous-one",
       cwd: "/project/reader",
@@ -258,7 +258,34 @@ describe("question-directed historical session reading", () => {
     await expect(tools.read({ session_id: "ambiguous", question: "What happened?" }, context)).rejects.toThrow(
       "matching IDs: ambiguous-one, ambiguous-two",
     );
+    for (const path of ["../ambiguous-one", "/tmp/ambiguous-one.jsonl", "sessions/ambiguous-one"]) {
+      await expect(tools.read({ session_id: path, question: "What happened?" }, context)).rejects.toThrow("not a path");
+    }
     expect(faux.state.callCount).toBe(0);
+  });
+
+  test("rejects answers that cite another session or an entry the reader was not shown", async () => {
+    writeSession(agentDirectory, {
+      id: "cited-session",
+      cwd: "/project/reader",
+      entries: [userEntry("real-entry", null, "The cache was removed.")],
+    });
+    faux = registerFauxProvider({
+      api: "pi-suite-reader-citations",
+      provider: "reader-provider",
+      models: [{ id: "reader-model" }],
+    });
+    const context = createContext(faux.getModel());
+    const tools = createSessionToolHarness();
+    for (const citation of ["session:other-session#real-entry", "session:cited-session#invented-entry"]) {
+      faux.setResponses([fauxAssistantMessage(`The cache was removed. ${citation}`)]);
+      await expect(tools.read({ session_id: "cited-session", question: "What happened?" }, context)).rejects.toThrow(
+        `invalid citation: ${citation}`,
+      );
+    }
+    faux.setResponses([fauxAssistantMessage("The cache was removed. session:cited-session#real-entry")]);
+    const valid = await tools.read({ session_id: "cited-session", question: "What happened?" }, context);
+    expect(valid.content[0].text).toContain("session:cited-session#real-entry");
   });
 
   test("prefers a complete historical ID over another session with the same prefix", async () => {

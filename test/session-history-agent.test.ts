@@ -1,4 +1,5 @@
-import { mkdtempSync, rmSync } from "node:fs";
+import { execFileSync } from "node:child_process";
+import { mkdirSync, mkdtempSync, realpathSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
@@ -57,7 +58,7 @@ describe("session history through the Pi agent loop", () => {
     rmSync(agentDirectory, { recursive: true, force: true });
   });
 
-  async function createHistoryAgent(cwd: string): Promise<AgentSession> {
+  async function createHistoryAgent(cwd: string, sessionManager = SessionManager.inMemory(cwd)): Promise<AgentSession> {
     if (!faux) throw new Error("Register the faux provider before creating the agent.");
     const apiProvider = getApiProvider(faux.api);
     if (!apiProvider) throw new Error(`Faux API ${faux.api} was not registered.`);
@@ -98,11 +99,81 @@ describe("session history through the Pi agent loop", () => {
       modelRuntime,
       resourceLoader,
       settingsManager,
-      sessionManager: SessionManager.inMemory(cwd),
+      sessionManager,
       tools: [SESSION_SEARCH_TOOL_NAME, SESSION_READ_TOOL_NAME],
     });
     return created.session;
   }
+
+  test("repo:. finds sessions from another worktree of the same Git repository through real git", async () => {
+    const git = (cwd: string, ...args: string[]) =>
+      execFileSync("git", ["-c", "user.name=Test", "-c", "user.email=test@example.com", ...args], { cwd });
+    const root = realpathSync(mkdtempSync(join(tmpdir(), "pi-suite-git-")));
+    const main = join(root, "main");
+    const feature = join(root, "feature");
+    const other = join(root, "other");
+    try {
+      for (const repository of [main, other]) {
+        mkdirSync(repository);
+        git(repository, "init", "--quiet");
+        git(repository, "commit", "--quiet", "--allow-empty", "-m", "init");
+      }
+      git(main, "remote", "add", "origin", "https://user:secret@github.com/Hopsken/pi-suite.git");
+      git(main, "remote", "add", "upstream", "git@github.com:someone-else/pi-suite.git");
+      git(main, "worktree", "add", "--quiet", feature);
+      git(other, "remote", "add", "origin", "git@github.com:other/project.git");
+
+      faux = registerFauxProvider({ api: "pi-suite-agent-repo", provider: "pi-suite-agent-repo" });
+      let searchResult = "";
+      faux.setResponses(
+        Array.from({ length: 10 }, () => (context: Context) => {
+          if (context.systemPrompt?.includes("session titling assistant")) return fauxAssistantMessage("Retry queue");
+          const asked = context.messages.find((message) => message.role === "user");
+          const text = asked?.role === "user" && typeof asked.content !== "string" ? asked.content : [];
+          if (!JSON.stringify(text).includes("Find")) return fauxAssistantMessage("Recorded the retry queue decision.");
+          if (!context.messages.some((message) => message.role === "toolResult"))
+            return fauxAssistantMessage(fauxToolCall(SESSION_SEARCH_TOOL_NAME, { query: 'repo:. "retry queue"' }), {
+              stopReason: "toolUse",
+            });
+          searchResult = lastToolResultText(context, SESSION_SEARCH_TOOL_NAME);
+          return fauxAssistantMessage("Found it.");
+        }),
+      );
+
+      const sessionIds: Record<string, string> = {};
+      for (const [name, cwd] of [
+        ["main", main],
+        ["other", other],
+      ] as const) {
+        const history = await createHistoryAgent(cwd, SessionManager.create(cwd));
+        await history.bindExtensions({});
+        await history.prompt("Record the retry queue decision.");
+        sessionIds[name] = history.sessionManager.getSessionId();
+        const repository = history.sessionManager
+          .getEntries()
+          .find((entry) => entry.type === "custom" && entry.customType === "pi-suite-repository");
+        if (name === "main")
+          expect(repository).toMatchObject({
+            data: {
+              worktreeRoot: main,
+              commonGitDir: join(main, ".git"),
+              remote: "github.com/hopsken/pi-suite",
+            },
+          });
+        expect(JSON.stringify(repository)).not.toContain("secret");
+        history.dispose();
+      }
+
+      session = await createHistoryAgent(feature);
+      await session.bindExtensions({});
+      await session.prompt("Find the retry queue decision from this repository.");
+
+      expect(searchResult).toContain(sessionIds.main);
+      expect(searchResult).not.toContain(sessionIds.other);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
 
   test("lets the model search history and use the real tool result in its answer", async () => {
     writeSession(agentDirectory, {

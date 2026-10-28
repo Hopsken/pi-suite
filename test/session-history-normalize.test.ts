@@ -42,8 +42,8 @@ describe("session_search evidence projection", () => {
                 name: "read",
                 arguments: {
                   path: "real.ts",
-                  token: "token-value-that-must-not-leak",
-                  nested: { clientSecret: "nested-value-that-must-not-leak" },
+                  token: "token-argument-kept-as-evidence",
+                  nested: { clientSecret: "nested-argument-kept-as-evidence" },
                 },
               },
             ],
@@ -76,10 +76,11 @@ describe("session_search evidence projection", () => {
       expect(unstructuredFile.details.sessions).toEqual([]);
     }
 
+    // By design, tool-call arguments stay in search evidence and reach the reader model, credentials included.
     const toolEvidence = await tools.search({ query: "tool:read" }, context);
-    expect(toolEvidence.content[0].text).toContain("token-value-that-must-not-leak");
-    expect(toolEvidence.content[0].text).toContain("nested-value-that-must-not-leak");
-    const argumentSearch = await tools.search({ query: "token-value-that-must-not-leak" }, context);
+    expect(toolEvidence.content[0].text).toContain("token-argument-kept-as-evidence");
+    expect(toolEvidence.content[0].text).toContain("nested-argument-kept-as-evidence");
+    const argumentSearch = await tools.search({ query: "token-argument-kept-as-evidence" }, context);
     expect(argumentSearch.details.sessions.map((session) => session.sessionId)).toEqual(["safe-evidence"]);
   });
 
