@@ -79,7 +79,7 @@ describe("question-directed historical session reading", () => {
                 type: "toolCall",
                 id: "config-call",
                 name: "read",
-                arguments: { path: "queue.json", apiKey: "reader-secret-that-must-not-leak" },
+                arguments: { path: "queue.json", apiKey: "reader-argument-kept-as-evidence" },
               },
             ],
             stopReason: "toolUse",
@@ -131,7 +131,7 @@ describe("question-directed historical session reading", () => {
       reasoning: "high",
     });
     expect(request?.prompt).toContain("The team selected the queue");
-    expect(request?.prompt).toContain("reader-secret-that-must-not-leak");
+    expect(request?.prompt).toContain("reader-argument-kept-as-evidence");
   });
 
   test("fails closed when the explicitly selected model cannot authenticate", async () => {
