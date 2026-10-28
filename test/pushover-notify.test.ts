@@ -2,7 +2,7 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
-import { registerPushoverNotify } from "../src/pushover-notify.ts";
+import { NOTIFY_USER_TOOL_NAME, registerPushoverNotify } from "../src/pushover-notify.ts";
 
 let directory: string;
 beforeEach(() => {
@@ -22,11 +22,21 @@ afterEach(() => {
 
 function setup() {
   const handlers = new Map<string, (event: any, ctx: any) => Promise<void>>();
+  const tools = new Map<string, any>();
+  let active = ["read"];
   let command: any;
   const configure = registerPushoverNotify({
     on: (event: string, handler: any) => handlers.set(event, handler),
     registerCommand: (_name: string, value: any) => {
       command = value;
+    },
+    registerTool: (tool: any) => {
+      tools.set(tool.name, tool);
+      active = [...active, tool.name];
+    },
+    getActiveTools: () => active,
+    setActiveTools: (names: string[]) => {
+      active = names;
     },
   } as never);
   const ctx = {
@@ -36,36 +46,85 @@ function setup() {
     sessionManager: { getSessionName: () => "Session" },
     ui: { notify: vi.fn(), select: vi.fn() },
   };
-  return { configure, ctx, command, emit: (event: string) => handlers.get(event)?.({ reason: "startup" }, ctx) };
+  return {
+    configure,
+    ctx,
+    command,
+    active: () => active,
+    callTool: (message: string) =>
+      tools.get(NOTIFY_USER_TOOL_NAME).execute("id", { message }, undefined, undefined, ctx),
+    emit: (event: string) => handlers.get(event)?.({ reason: "startup" }, ctx),
+    runFor: async (seconds: number, during?: () => unknown) => {
+      await handlers.get("agent_start")?.({}, ctx);
+      vi.advanceTimersByTime(seconds * 1000);
+      await during?.();
+      await handlers.get("agent_settled")?.({}, ctx);
+    },
+  };
 }
 
-test("defaults off even with credentials; persisted on sends and off survives reload", async () => {
+function sentMessages(): string[] {
+  return vi.mocked(fetch).mock.calls.map(([, init]) => (init!.body as URLSearchParams).get("message") ?? "");
+}
+
+test("defaults off; enabling persists and exposes notify_user; long runs never notify automatically", async () => {
+  writeFileSync(join(directory, "pi-suite.json"), '{"other":42}');
   let app = setup();
   await app.emit("session_start");
-  await app.emit("agent_start");
-  vi.advanceTimersByTime(31_000);
-  await app.emit("agent_settled");
-  expect(fetch).not.toHaveBeenCalled();
+  expect(app.active()).toEqual(["read"]);
   expect(app.ctx.ui.notify).not.toHaveBeenCalled();
-  writeFileSync(join(directory, "pi-suite.json"), '{"other":42}');
+
   app.ctx.ui.select.mockResolvedValue("on");
   await app.configure(app.ctx as never);
   expect(app.ctx.ui.select).toHaveBeenCalledWith("Pushover notifications (off)", ["on", "off"]);
-  expect(JSON.parse(readFileSync(join(directory, "pi-suite.json"), "utf8"))).toEqual({
-    other: 42,
-    pushover: true,
+  expect(JSON.parse(readFileSync(join(directory, "pi-suite.json"), "utf8"))).toEqual({ other: 42, pushover: true });
+  expect(app.active()).toEqual(["read", NOTIFY_USER_TOOL_NAME]);
+
+  app = setup();
+  expect(app.active()).toEqual(["read", NOTIFY_USER_TOOL_NAME]);
+  await app.runFor(600);
+  expect(fetch).not.toHaveBeenCalled();
+
+  await expect(app.callTool("Build finished")).resolves.toMatchObject({
+    content: [{ type: "text", text: "Notification sent." }],
   });
-  app = setup();
-  await app.emit("agent_start");
-  vi.advanceTimersByTime(31_000);
-  await app.emit("agent_settled");
-  expect(fetch).toHaveBeenCalledOnce();
+  const [url, init] = vi.mocked(fetch).mock.calls[0]!;
+  expect(url).toBe("https://api.pushover.net/1/messages.json");
+  expect(Object.fromEntries(init!.body as URLSearchParams)).toEqual({
+    token: "token",
+    user: "user",
+    title: "Pi · Session",
+    message: "Build finished",
+  });
+
   await app.command.handler("off", app.ctx);
-  app = setup();
-  await app.emit("agent_start");
-  vi.advanceTimersByTime(31_000);
-  await app.emit("agent_settled");
-  expect(fetch).toHaveBeenCalledOnce();
+  expect(app.active()).toEqual(["read"]);
+  await app.command.handler("on", app.ctx);
+  expect(app.active()).toEqual(["read", NOTIFY_USER_TOOL_NAME]);
+});
+
+test("notify_user reports Pushover failures to the agent", async () => {
+  writeFileSync(join(directory, "pi-suite.json"), '{"pushover":true}');
+  vi.mocked(fetch).mockResolvedValue({ ok: false, status: 429, text: async () => "rate limited" } as never);
+  await expect(setup().callTool("Done")).rejects.toThrow("Pushover failed: HTTP 429 rate limited");
+});
+
+test("prompt notification fires once per long run and skips short runs", async () => {
+  writeFileSync(join(directory, "pi-suite.json"), '{"pushover":true}');
+  const app = setup();
+  const prompt = () => app.emit("ui_prompt_start");
+
+  await app.runFor(10, prompt);
+  expect(fetch).not.toHaveBeenCalled();
+
+  await app.runFor(31, async () => {
+    await prompt();
+    await prompt();
+  });
+  expect(sentMessages()).toEqual(["Waiting for your input"]);
+
+  await app.runFor(31, prompt);
+  expect(sentMessages()).toEqual(["Waiting for your input", "Waiting for your input"]);
 });
 
 test.each(["PUSHOVER_TOKEN", "PUSHOVER_USER", "both"])("warns only when enabled with missing %s", async (missing) => {
@@ -85,9 +144,8 @@ test.each(["PUSHOVER_TOKEN", "PUSHOVER_USER", "both"])("warns only when enabled 
     expect.stringContaining("PUSHOVER_TOKEN and PUSHOVER_USER"),
     "warning",
   );
-  await app.emit("agent_start");
-  vi.advanceTimersByTime(31_000);
-  await app.emit("agent_settled");
+  await expect(app.callTool("Done")).rejects.toThrow("PUSHOVER_TOKEN and PUSHOVER_USER");
+  await app.runFor(31, () => app.emit("ui_prompt_start"));
   expect(fetch).not.toHaveBeenCalled();
 });
 
@@ -99,8 +157,5 @@ test("invalid config is preserved and a failed save does not enable notification
   await app.command.handler("on", app.ctx);
   expect(app.ctx.ui.notify).toHaveBeenCalledWith(expect.stringContaining("Could not save"), "error");
   expect(readFileSync(join(directory, "pi-suite.json"), "utf8")).toBe("{invalid");
-  await app.emit("agent_start");
-  vi.advanceTimersByTime(31_000);
-  await app.emit("agent_settled");
-  expect(fetch).not.toHaveBeenCalled();
+  expect(app.active()).toEqual(["read"]);
 });
