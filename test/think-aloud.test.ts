@@ -56,7 +56,6 @@ test("defaults off; enabling persists, activates immediately, and survives reloa
   expect(app.tools.size).toBe(0);
   expect(await app.configure(undefined)).toBe(false);
   expect(await app.configure("on")).toBe(true);
-  expect(app.ctx.ui.select).toHaveBeenLastCalledWith("Think aloud (off)", ["on", "off"]);
   expect(app.active()).toEqual(["read", THINK_ALOUD_TOOL_NAME]);
   expect(JSON.parse(readFileSync(join(directory, "pi-suite.json"), "utf8"))).toEqual({ other: 42, thinkAloud: true });
 

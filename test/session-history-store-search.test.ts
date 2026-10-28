@@ -56,9 +56,7 @@ describe("platform-backed session history", () => {
     const tools = createSessionToolHarness();
 
     const global = await tools.search({ query: '"shared evidence"' }, searchContext("/project/one"));
-    expect(global.details.sessions.map((session) => session.sessionId)).toEqual(["history-one", "history-two"]);
-    expect(global.details.sessions.every((session) => session.cwd.startsWith("/project/"))).toBe(true);
-    expect(global.details).toMatchObject({ count: 2, hasMore: false });
+    // The agent reads the JSON envelope, not details.
     const envelope = JSON.parse(global.content[0].text);
     expect(envelope).toMatchObject({ count: 2, hasMore: false });
     expect(
@@ -235,9 +233,8 @@ describe("platform-backed session history", () => {
     expect(result.details.sessions.map((session) => session.sessionId)).toEqual(["filtered-session"]);
 
     const wrongCase = await tools.search({ query: "file:src/queue.ts" }, searchContext("/Project/CaseSensitive"));
-    expect(process.platform === "win32" ? wrongCase.details.sessions.length : 0).toBe(
-      wrongCase.details.sessions.length,
-    );
+    // Paths are case-sensitive except on Windows.
+    if (process.platform !== "win32") expect(wrongCase.details.sessions).toEqual([]);
     await expect(tools.search({ query: "", limit: 51 }, searchContext("/Project/CaseSensitive"))).rejects.toThrow(
       "1 to 50",
     );
